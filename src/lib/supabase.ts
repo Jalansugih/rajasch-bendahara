@@ -16,10 +16,17 @@ export function getSavedSupabaseCredentials(): { url: string; key: string } {
   const localUrl = envUrl || localStorage.getItem(STORAGE_KEY_URL) || '';
   const localKey = envKey || localStorage.getItem(STORAGE_KEY_KEY) || '';
 
-  return {
-    url: localUrl || 'https://xyzcompany.supabase.co',
-    key: localKey || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.dummy_anon_key_for_demo'
-  };
+  const finalUrl = localUrl || 'https://xyzcompany.supabase.co';
+  const finalKey = localKey || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.dummy_anon_key_for_demo';
+
+  // DEBUG: bantu diagnosa masalah konfigurasi tanpa membocorkan key penuh di console.
+  // Boleh dihapus nanti setelah koneksi Supabase stabil.
+  console.log('[Supabase Debug] Sumber URL:', envUrl ? 'ENV VAR' : (localStorage.getItem(STORAGE_KEY_URL) ? 'localStorage' : 'DUMMY/placeholder'));
+  console.log('[Supabase Debug] URL dipakai:', finalUrl);
+  console.log('[Supabase Debug] Sumber Key:', envKey ? 'ENV VAR' : (localStorage.getItem(STORAGE_KEY_KEY) ? 'localStorage' : 'DUMMY/placeholder'));
+  console.log('[Supabase Debug] Key dipakai (masked):', finalKey ? `${finalKey.slice(0, 8)}...${finalKey.slice(-4)} (panjang: ${finalKey.length})` : '(KOSONG)');
+
+  return { url: finalUrl, key: finalKey };
 }
 
 let supabaseInstance: SupabaseClient | null = null;

@@ -4,10 +4,21 @@
 -- =====================================================================
 
 -- 1. HAPUS TRIGGER & TABEL LAMA JIKA ADA
-DROP TRIGGER IF EXISTS trigger_check_saldo_pengeluaran ON pengeluaran;
-DROP TRIGGER IF EXISTS trigger_audit_pemasukan ON pemasukan;
-DROP TRIGGER IF EXISTS trigger_audit_pengeluaran ON pengeluaran;
-DROP TRIGGER IF EXISTS trigger_audit_siswa_tagihan ON siswa_tagihan;
+-- (dibungkus DO block supaya tidak error kalau tabelnya belum pernah ada
+-- sama sekali -- kasus instalasi baru/pertama kali)
+DO $$
+BEGIN
+  IF to_regclass('public.pengeluaran') IS NOT NULL THEN
+    DROP TRIGGER IF EXISTS trigger_check_saldo_pengeluaran ON pengeluaran;
+    DROP TRIGGER IF EXISTS trigger_audit_pengeluaran ON pengeluaran;
+  END IF;
+  IF to_regclass('public.pemasukan') IS NOT NULL THEN
+    DROP TRIGGER IF EXISTS trigger_audit_pemasukan ON pemasukan;
+  END IF;
+  IF to_regclass('public.siswa_tagihan') IS NOT NULL THEN
+    DROP TRIGGER IF EXISTS trigger_audit_siswa_tagihan ON siswa_tagihan;
+  END IF;
+END $$;
 
 DROP FUNCTION IF EXISTS check_saldo_sebelum_pengeluaran();
 DROP FUNCTION IF EXISTS log_audit_change();
@@ -208,6 +219,12 @@ DROP POLICY IF EXISTS "Akses Publik master_kategori" ON master_kategori;
 DROP POLICY IF EXISTS "Akses Publik siswa_tagihan" ON siswa_tagihan;
 DROP POLICY IF EXISTS "Akses Publik pemasukan" ON pemasukan;
 DROP POLICY IF EXISTS "Akses Publik pengeluaran" ON pengeluaran;
+DROP POLICY IF EXISTS "Hanya user login - audit_log" ON audit_log;
+DROP POLICY IF EXISTS "Hanya user login - master_sumber_dana" ON master_sumber_dana;
+DROP POLICY IF EXISTS "Hanya user login - master_kategori" ON master_kategori;
+DROP POLICY IF EXISTS "Hanya user login - siswa_tagihan" ON siswa_tagihan;
+DROP POLICY IF EXISTS "Hanya user login - pemasukan" ON pemasukan;
+DROP POLICY IF EXISTS "Hanya user login - pengeluaran" ON pengeluaran;
 
 CREATE POLICY "Hanya user login - audit_log" ON audit_log
   FOR ALL USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');

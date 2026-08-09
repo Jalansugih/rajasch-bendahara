@@ -153,6 +153,10 @@ export default function App() {
       // Mode Demo Lokal: tidak ada Supabase terhubung -> tidak perlu login,
       // tapi data hanya tersimpan di browser ini (tidak permanen/tidak aman
       // untuk data keuangan sungguhan). Beri sesi demo yang jelas ditandai.
+      // Alasan gagal konek ditampilkan supaya mudah didiagnosa (sebelumnya
+      // gagal secara diam-diam tanpa pesan apa pun).
+      console.error('[Supabase] Gagal terhubung:', res.message);
+      showToast(`Supabase belum terhubung: ${res.message}`);
       setUserSession({
         id: 'demo_local',
         email: 'demo@local (mode tanpa Supabase)',
