@@ -200,7 +200,17 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- 11. AKTIFKAN ROW LEVEL SECURITY, BATASI HANYA UNTUK PENGGUNA YANG SUDAH LOGIN
+-- 11. BERIKAN GRANT DASAR (level tabel) UNTUK ROLE anon & authenticated.
+-- PENTING: Row Level Security (RLS) di bawah HANYA mengatur baris mana yang
+-- boleh diakses -- tapi role tetap butuh izin GRANT dasar untuk operasi
+-- SELECT/INSERT/UPDATE/DELETE di tabelnya sama sekali, kalau tidak akan
+-- muncul error "permission denied for table ...". anon tetap diberi grant
+-- supaya aplikasi bisa mengecek koneksi sebelum login (RLS di bawah tetap
+-- membatasi anon hanya melihat 0 baris sampai dia login).
+GRANT USAGE ON SCHEMA public TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON audit_log, master_sumber_dana, master_kategori, siswa_tagihan, pemasukan, pengeluaran TO anon, authenticated;
+
+-- 12. AKTIFKAN ROW LEVEL SECURITY, BATASI HANYA UNTUK PENGGUNA YANG SUDAH LOGIN
 -- PENTING: Sebelumnya policy ini "USING (true)" yang berarti SIAPA SAJA yang
 -- punya anon key (yang memang publik/terlihat di browser) bisa baca & tulis
 -- SEMUA data keuangan tanpa login. Ini sudah diperbaiki: sekarang hanya
@@ -239,7 +249,7 @@ CREATE POLICY "Hanya user login - pemasukan" ON pemasukan
 CREATE POLICY "Hanya user login - pengeluaran" ON pengeluaran
   FOR ALL USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
 
--- 12. PENTING: RPC catat_pengeluaran() didefinisikan SECURITY INVOKER (default),
+-- 13. PENTING: RPC catat_pengeluaran() didefinisikan SECURITY INVOKER (default),
 -- artinya RPC ini berjalan dengan hak akses pemanggilnya sehingga tetap tunduk
 -- pada RLS di atas -> hanya user yang sudah login yang bisa memanggilnya.
 -- Baris ini memastikan grant eksekusi hanya untuk role 'authenticated', bukan 'anon'.
