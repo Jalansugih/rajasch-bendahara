@@ -52,21 +52,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
       >
         <div>
           {/* Brand Header */}
-          <div className="h-16 flex items-center px-6 border-b border-slate-100 justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-[14px] bg-blue-600 flex items-center justify-center text-white font-bold text-lg shadow-md shadow-blue-500/20">
-                R
-              </div>
-              <div>
-                <span className="font-bold text-slate-900 tracking-tight text-lg">
-                  RajaSch<span class="text-blue-600">.id</span>
-                </span>
-                <span className="block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                  Modul Bendahara
-                </span>
-              </div>
-            </div>
-          </div>
+            <div className="h-16 flex items-center px-6 border-b border-slate-100 justify-between">
+              <div className="flex items-center gap-3">
+           {/* Logo SVG */}
+       <div className="w-9 h-9 flex items-center justify-center shrink-0">
+        <img
+        src="/logo-rk-bendahara.svg"
+        alt="RajaKas.id"
+        className="w-9 h-9 object-contain"
+      />
+        </div>
+    {/* Nama Aplikasi */}
+    <div>
+      <span className="font-bold text-slate-900 tracking-tight text-lg">
+        RajaKas<span className="text-blue-600">.id</span>
+      </span>
+      <span className="block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+        Portal Bendahara
+      </span>
+    </div>
+  </div>
 
           {/* Navigation Links */}
           <nav className="p-4 space-y-1">

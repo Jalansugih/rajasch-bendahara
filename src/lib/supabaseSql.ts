@@ -1,5 +1,5 @@
 export const SUPABASE_SQL_SCRIPT = `-- =====================================================================
--- RAJASCH.ID MODUL BENDAHARA - DATABASE MIGRATION SCRIPT (V2)
+-- RAJAKAS.ID MODUL BENDAHARA - DATABASE MIGRATION SCRIPT (V2)
 -- Jalankan script ini di SQL Editor Supabase Project Anda
 --
 -- PERINGATAN: script ini DROP + CREATE ULANG seluruh tabel modul bendahara

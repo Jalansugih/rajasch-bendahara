@@ -1,4 +1,4 @@
-# RajaSch.id — Modul Bendahara
+# RajaKas.id — Modul Bendahara
 
 Aplikasi manajemen keuangan sekolah (pemasukan, pengeluaran, tagihan siswa,
 laporan) dengan backend Supabase (Postgres + Auth).

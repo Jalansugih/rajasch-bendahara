@@ -291,7 +291,7 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
               <div>
                 <p className="text-slate-600">Mengetahui,</p>
                 <p className="font-bold text-slate-900 mb-16">Kepala Sekolah {currentLembaga}</p>
-                <p className="font-bold text-slate-900 underline">Nama Kepala Sekolah Madrasah</p>
+                <p className="font-bold text-slate-900 underline">Nama Kepala Sekolah</p>
                 <p className="text-[10px] text-slate-500">NIP. 19680412 199303 1 002</p>
               </div>
               <div>
@@ -302,7 +302,7 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
               </div>
             </div>
             <div className="mt-8 text-[9px] text-slate-400 text-center border-t border-slate-100 pt-2 font-mono">
-              Dokumen ini dicetak secara otomatis dari RajaSch.id Modul Bendahara • Terintegrasi Database & Audit Log
+              Dokumen ini dicetak secara otomatis dari RajaKas.id Modul Bendahara • Terintegrasi Database & Audit Log
             </div>
           </div>
         </div>
