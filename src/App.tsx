@@ -1,22 +1,42 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Pemasukan, Pengeluaran, SiswaTagihan, MasterSumberDana, 
-  AuditLog, UserSession 
+import {
+  Pemasukan, Pengeluaran, SiswaTagihan, MasterSumberDana,
+  AuditLog, UserSession, KonfigurasiLembaga
 } from './types';
 
-import { 
-  INITIAL_MASTER_KELAS, INITIAL_MASTER_SUMBER, INITIAL_MASTER_KATEGORI, 
-  INITIAL_PEMASUKAN, INITIAL_PENGELUARAN, INITIAL_SISWA_TAGIHAN, INITIAL_AUDIT_LOGS 
+import {
+  INITIAL_MASTER_KELAS, INITIAL_MASTER_SUMBER, INITIAL_MASTER_KATEGORI,
+  INITIAL_PEMASUKAN, INITIAL_PENGELUARAN, INITIAL_SISWA_TAGIHAN, INITIAL_AUDIT_LOGS
 } from './data/initialData';
 
-import { 
-  getSupabaseClient, testSupabaseConnection, 
-  fetchPemasukanFromSupabase, fetchPengeluaranFromSupabase, 
-  fetchSiswaTagihanFromSupabase, fetchAuditLogsFromSupabase, 
-  rpcCatatPengeluaran, insertPemasukanSupabase, 
-  deletePemasukanSupabase, deletePengeluaranSupabase,
-  getCurrentSession, onAuthStateChange, signOutSupabase
+import {
+  testSupabaseConnection, getCurrentSession, onAuthStateChange, signOutSupabase
 } from './lib/supabase';
+
+import {
+  fetchKonfigurasiLembaga, getDefaultConfiguration, saveKonfigurasiLembaga,
+  saveSaldoAwal, uploadLogoToStorage
+} from './lib/configuration';
+
+import {
+  fetchMasterKelas, insertMasterKelas, deleteMasterKelas,
+  fetchMasterSumberDana, insertMasterSumberDana, deleteMasterSumberDana,
+  fetchMasterKategori, insertMasterKategori, deleteMasterKategori
+} from './lib/masterData';
+
+import {
+  fetchPemasukanFromSupabase, insertPemasukanSupabase, deletePemasukanSupabase
+} from './lib/pemasukan';
+
+import {
+  fetchPengeluaranFromSupabase, rpcCatatPengeluaran, deletePengeluaranSupabase
+} from './lib/pengeluaran';
+
+import {
+  fetchSiswaTagihan, insertSiswaTagihan, deleteSiswaTagihan, rpcCatatPembayaranSiswa
+} from './lib/siswa';
+
+import { fetchAuditLogsFromSupabase } from './lib/audit';
 
 import { Navbar } from './components/Navbar';
 import { Sidebar } from './components/Sidebar';
@@ -28,10 +48,10 @@ import { LaporanView } from './components/LaporanView';
 import { PengaturanView } from './components/PengaturanView';
 import { AuthModal } from './components/AuthModal';
 import { SupabaseConfigModal } from './components/SupabaseConfigModal';
-import { 
-  ModalPemasukan, ModalPengeluaran, 
-  ModalSiswaTagihanPropsModal, ModalSiswaBayarPropsModal, 
-  ModalBlueprint 
+import {
+  ModalPemasukan, ModalPengeluaran,
+  ModalSiswaTagihanPropsModal, ModalSiswaBayarPropsModal,
+  ModalBlueprint
 } from './components/Modals';
 
 export default function App() {
@@ -40,26 +60,22 @@ export default function App() {
   const [isOpenMobileSidebar, setIsOpenMobileSidebar] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Institution Context
-  const [currentLembaga, setCurrentLembaga] = useState('SD Negeri 1 Merdeka');
-  const [jenisLembaga, setJenisLembaga] = useState('SD');
-  const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null);
+  // Institution Context -- sekarang sumber kebenarannya adalah Supabase
+  // (tabel konfigurasi_lembaga), bukan lagi murni React State (poin 2 & 9
+  // panduan). Nilai default kosong dipakai sebelum data selesai dimuat.
+  const [konfigurasi, setKonfigurasi] = useState<KonfigurasiLembaga>(getDefaultConfiguration());
 
   // App Master Data & Local Store
-  const [masterKelas, setMasterKelas] = useState<string[]>(INITIAL_MASTER_KELAS);
-  const [masterSumberDana, setMasterSumberDana] = useState<MasterSumberDana[]>(INITIAL_MASTER_SUMBER);
-  const [masterKategoriPengeluaran, setMasterKategoriPengeluaran] = useState<string[]>(INITIAL_MASTER_KATEGORI);
+  const [masterKelas, setMasterKelas] = useState<string[]>([]);
+  const [masterSumberDana, setMasterSumberDana] = useState<MasterSumberDana[]>([]);
+  const [masterKategoriPengeluaran, setMasterKategoriPengeluaran] = useState<string[]>([]);
 
-  const [pemasukanList, setPemasukanList] = useState<Pemasukan[]>(INITIAL_PEMASUKAN);
-  const [pengeluaranList, setPengeluaranList] = useState<Pengeluaran[]>(INITIAL_PENGELUARAN);
-  const [siswaTagihanList, setSiswaTagihanList] = useState<SiswaTagihan[]>(INITIAL_SISWA_TAGIHAN);
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(INITIAL_AUDIT_LOGS);
+  const [pemasukanList, setPemasukanList] = useState<Pemasukan[]>([]);
+  const [pengeluaranList, setPengeluaranList] = useState<Pengeluaran[]>([]);
+  const [siswaTagihanList, setSiswaTagihanList] = useState<SiswaTagihan[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
 
   // Auth & Supabase Status
-  // PENTING: tidak ada lagi sesi default otomatis. Sebelumnya app langsung
-  // "login" sebagai Bendahara Utama tanpa autentikasi apa pun -- ini sudah
-  // diperbaiki. Sesi hanya terisi setelah login sungguhan (mode Supabase)
-  // atau otomatis di mode Demo lokal (yang ditandai jelas di UI).
   const [userSession, setUserSession] = useState<UserSession | null>(null);
   const [isConnectedToSupabase, setIsConnectedToSupabase] = useState<boolean>(false);
   const [authChecked, setAuthChecked] = useState<boolean>(false);
@@ -74,23 +90,6 @@ export default function App() {
   const [selectedSiswaForBayar, setSelectedSiswaForBayar] = useState<SiswaTagihan | null>(null);
   const [isBlueprintModalOpen, setIsBlueprintModalOpen] = useState(false);
 
-  const [saldoAwal, setSaldoAwal] = useState<number>(100000000); // Rp 100.000.000
-
-  const handleUpdateSaldoAwal = (nominal: number) => {
-    setSaldoAwal(nominal);
-    showToast(`Kas Awal berhasil diisi: ${formatRupiah(nominal)}`);
-  };
-
-  const handleResetAllData = () => {
-    if (confirm('Apakah Anda yakin ingin menghapus/mengosongkan seluruh data transaksi pemasukan, pengeluaran, dan tagihan? Semua angka di Dashboard akan direset ke 0.')) {
-      setPemasukanList([]);
-      setPengeluaranList([]);
-      setSiswaTagihanList([]);
-      setAuditLogs([]);
-      showToast('Seluruh data transaksi & angka di dashboard berhasil direset!');
-    }
-  };
-
   // Toast Helper
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -99,10 +98,42 @@ export default function App() {
     }, 3500);
   };
 
+  const handleUpdateSaldoAwal = async (nominal: number) => {
+    if (isConnectedToSupabase) {
+      const res = await saveSaldoAwal(nominal);
+      if (!res.success) {
+        showToast(`Gagal menyimpan Kas Awal: ${res.message}`);
+        return;
+      }
+      setKonfigurasi(prev => ({ ...prev, saldoAwal: nominal }));
+      showToast(`Kas Awal berhasil disimpan ke database: ${formatRupiah(nominal)}`);
+    } else {
+      // Mode Demo Lokal: tidak ada tempat permanen untuk menyimpan ini.
+      setKonfigurasi(prev => ({ ...prev, saldoAwal: nominal }));
+      showToast(`[Demo Lokal] Kas Awal diisi: ${formatRupiah(nominal)} (tidak permanen)`);
+    }
+  };
+
+  const handleResetAllData = () => {
+    if (isConnectedToSupabase) {
+      // Poin 21 panduan: mode Produksi TIDAK BOLEH kehilangan data secara
+      // massal lewat satu tombol UI -- hapus data hanya lewat aksi hapus
+      // per-transaksi yang sudah tervalidasi server.
+      showToast('Reset massal dinonaktifkan di mode Produksi. Hapus transaksi satu per satu lewat tombol Hapus pada tiap baris.');
+      return;
+    }
+    if (confirm('[Demo Lokal] Apakah Anda yakin ingin mengosongkan seluruh data transaksi di tampilan ini? (Tidak memengaruhi database produksi mana pun.)')) {
+      setPemasukanList([]);
+      setPengeluaranList([]);
+      setSiswaTagihanList([]);
+      setAuditLogs([]);
+      showToast('[Demo Lokal] Seluruh data tampilan berhasil direset!');
+    }
+  };
+
   // Sync / Test Supabase on mount
   useEffect(() => {
     checkAndSyncSupabase();
-    // Dengarkan perubahan status login (login/logout dari tab lain, token expired, dll)
     const unsubscribe = onAuthStateChange((session) => {
       if (session) {
         setUserSession({
@@ -111,7 +142,6 @@ export default function App() {
           role: 'Bendahara Utama'
         });
       } else if (isConnectedToSupabase) {
-        // Hanya paksa logout kalau memang mode Supabase (bukan demo lokal)
         setUserSession(null);
       }
     });
@@ -119,12 +149,15 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Poin 3 panduan: urutan load saat startup adalah cek session -> cek
+  // Supabase -> konfigurasi lembaga & saldo awal -> master data -> transaksi
+  // -> siswa/tagihan -> audit. Dashboard TIDAK dirender sebelum semua ini
+  // selesai (lihat gate `!authChecked` di bagian render bawah).
   const checkAndSyncSupabase = async () => {
     const res = await testSupabaseConnection();
     setIsConnectedToSupabase(res.success);
 
     if (res.success) {
-      // Cek apakah sudah ada sesi login yang tersimpan (mis. refresh halaman)
       const session = await getCurrentSession();
       if (session) {
         setUserSession({
@@ -137,24 +170,29 @@ export default function App() {
         setIsAuthModalOpen(true);
       }
 
-      // Pull real data from Supabase tables
-      const inData = await fetchPemasukanFromSupabase();
-      if (inData) setPemasukanList(inData);
+      const [config, kelas, sumber, kategori, inData, outData, stData, logs] = await Promise.all([
+        fetchKonfigurasiLembaga(),
+        fetchMasterKelas(),
+        fetchMasterSumberDana(),
+        fetchMasterKategori(),
+        fetchPemasukanFromSupabase(),
+        fetchPengeluaranFromSupabase(),
+        fetchSiswaTagihan(),
+        fetchAuditLogsFromSupabase()
+      ]);
 
-      const outData = await fetchPengeluaranFromSupabase();
-      if (outData) setPengeluaranList(outData);
-
-      const stData = await fetchSiswaTagihanFromSupabase();
-      if (stData) setSiswaTagihanList(stData);
-
-      const logs = await fetchAuditLogsFromSupabase();
-      if (logs) setAuditLogs(logs);
+      if (config) setKonfigurasi(config);
+      setMasterKelas(kelas ?? []);
+      setMasterSumberDana(sumber ?? []);
+      setMasterKategoriPengeluaran(kategori ?? []);
+      setPemasukanList(inData ?? []);
+      setPengeluaranList(outData ?? []);
+      setSiswaTagihanList(stData ?? []);
+      setAuditLogs(logs ?? []);
     } else {
-      // Mode Demo Lokal: tidak ada Supabase terhubung -> tidak perlu login,
-      // tapi data hanya tersimpan di browser ini (tidak permanen/tidak aman
-      // untuk data keuangan sungguhan). Beri sesi demo yang jelas ditandai.
-      // Alasan gagal konek ditampilkan supaya mudah didiagnosa (sebelumnya
-      // gagal secara diam-diam tanpa pesan apa pun).
+      // Mode Demo Lokal: tidak ada Supabase terhubung -> data initial hanya
+      // dipakai DI SINI, khusus untuk demo (poin 4 panduan), tidak pernah
+      // dipakai sebagai fallback diam-diam saat mode produksi gagal konek.
       console.error('[Supabase] Gagal terhubung:', res.message);
       showToast(`Supabase belum terhubung: ${res.message}`);
       setUserSession({
@@ -162,6 +200,14 @@ export default function App() {
         email: 'demo@local (mode tanpa Supabase)',
         role: 'Demo Lokal'
       });
+      setKonfigurasi({ ...getDefaultConfiguration(), namaLembaga: 'SD Negeri 1 Merdeka (Contoh Demo)' });
+      setMasterKelas(INITIAL_MASTER_KELAS);
+      setMasterSumberDana(INITIAL_MASTER_SUMBER);
+      setMasterKategoriPengeluaran(INITIAL_MASTER_KATEGORI);
+      setPemasukanList(INITIAL_PEMASUKAN);
+      setPengeluaranList(INITIAL_PENGELUARAN);
+      setSiswaTagihanList(INITIAL_SISWA_TAGIHAN);
+      setAuditLogs(INITIAL_AUDIT_LOGS);
     }
     setAuthChecked(true);
   };
@@ -173,8 +219,25 @@ export default function App() {
     }
   };
 
-  // Helper ID generator
-  const generateNextId = (list: { id: string }[], prefix: string) => {
+  const refreshPemasukan = async () => {
+    const data = await fetchPemasukanFromSupabase();
+    if (data) setPemasukanList(data);
+  };
+
+  const refreshPengeluaran = async () => {
+    const data = await fetchPengeluaranFromSupabase();
+    if (data) setPengeluaranList(data);
+  };
+
+  const refreshSiswaTagihan = async () => {
+    const data = await fetchSiswaTagihan();
+    if (data) setSiswaTagihanList(data);
+  };
+
+  // Helper ID generator -- HANYA dipakai di jalur Mode Demo Lokal (tidak ada
+  // Supabase sungguhan). Untuk data produksi, ID selalu dibuat oleh database
+  // (UUID default), bukan lagi dari fungsi ini (poin 12 panduan).
+  const generateDemoId = (list: { id: string }[], prefix: string) => {
     let maxNum = 0;
     list.forEach(item => {
       const parts = String(item.id).split('-');
@@ -198,7 +261,33 @@ export default function App() {
     nominal: number;
     keterangan: string;
   }) => {
-    const id = generateNextId(pemasukanList, 'IN');
+    if (isConnectedToSupabase) {
+      // Poin 5 panduan: jangan anggap transaksi berhasil hanya karena
+      // setState -- alur yang benar: validasi -> INSERT Supabase -> fetch
+      // ulang -> update state -> baru tampilkan sukses.
+      const res = await insertPemasukanSupabase({
+        noBukti: data.noBukti,
+        tanggal: data.tanggal,
+        sumber: data.sumber,
+        sub: data.sub,
+        nominal: data.nominal,
+        keterangan: data.keterangan,
+        status: 'Selesai'
+      });
+
+      if (!res.success) {
+        showToast(`Gagal menyimpan pemasukan: ${res.message}`);
+        return;
+      }
+
+      await refreshPemasukan();
+      refreshAuditLogs();
+      showToast('Pemasukan Kas berhasil disimpan ke database!');
+      return;
+    }
+
+    // Mode Demo Lokal saja
+    const id = generateDemoId(pemasukanList, 'IN');
     const newTx: Pemasukan = {
       id,
       noBukti: data.noBukti || id,
@@ -209,18 +298,8 @@ export default function App() {
       keterangan: data.keterangan,
       status: 'Selesai'
     };
-
     setPemasukanList(prev => [newTx, ...prev]);
-
-    if (isConnectedToSupabase) {
-      const res = await insertPemasukanSupabase(newTx);
-      if (!res.success) {
-        showToast(`Warning Supabase: ${res.message}. Tersimpan lokal.`);
-      }
-      refreshAuditLogs();
-    }
-
-    showToast('Pemasukan Kas berhasil disimpan!');
+    showToast('[Demo Lokal] Pemasukan Kas dicatat sementara di browser ini!');
   };
 
   const handleSavePengeluaran = async (data: {
@@ -230,14 +309,11 @@ export default function App() {
     nominal: number;
     keterangan: string;
   }): Promise<{ success: boolean; message?: string }> => {
-    const id = generateNextId(pengeluaranList, 'OUT');
-    const noBukti = data.noBukti || id;
-
     if (isConnectedToSupabase) {
-      // Call Postgres RPC Function catat_pengeluaran() with server-side cash balance checks!
+      // Poin 13 panduan: RPC catat_pengeluaran() dipertahankan (validasi
+      // saldo server-side), TANPA mengirim ID buatan frontend.
       const res = await rpcCatatPengeluaran({
-        id,
-        noBukti,
+        noBukti: data.noBukti,
         tanggal: data.tanggal,
         kategori: data.kategori,
         nominal: data.nominal,
@@ -248,39 +324,37 @@ export default function App() {
         return { success: false, message: res.message };
       }
 
-      // Re-fetch list
-      const outData = await fetchPengeluaranFromSupabase();
-      if (outData) setPengeluaranList(outData);
+      await refreshPengeluaran();
       refreshAuditLogs();
       showToast('Pengeluaran berhasil dicatat & diverifikasi server Supabase!');
       return { success: true };
     }
 
-    // Local validation check for cash balance if offline
+    // Mode Demo Lokal saja: validasi saldo dilakukan di sisi klien karena
+    // tidak ada server sungguhan untuk memvalidasinya.
     const totalInAll = pemasukanList.reduce((acc, curr) => acc + curr.nominal, 0);
     const totalOutAll = pengeluaranList.reduce((acc, curr) => acc + curr.nominal, 0);
-    const currentSaldo = saldoAwal + totalInAll - totalOutAll;
+    const currentSaldo = konfigurasi.saldoAwal + totalInAll - totalOutAll;
 
     if (data.nominal > currentSaldo) {
       return {
         success: false,
-        message: `VALIDASI SALDO KAS SERVER: Nominal pengeluaran (${formatRupiah(data.nominal)}) melebihi total saldo kas tersedia (${formatRupiah(currentSaldo)})!`
+        message: `[Demo Lokal] Nominal pengeluaran (${formatRupiah(data.nominal)}) melebihi total saldo kas tersedia (${formatRupiah(currentSaldo)})!`
       };
     }
 
+    const id = generateDemoId(pengeluaranList, 'OUT');
     const newTx: Pengeluaran = {
       id,
-      noBukti,
+      noBukti: data.noBukti || id,
       tanggal: data.tanggal,
       kategori: data.kategori,
       nominal: data.nominal,
       keterangan: data.keterangan,
       status: 'Terbayar'
     };
-
     setPengeluaranList(prev => [newTx, ...prev]);
 
-    // Local audit log entry
     const localAudit: AuditLog = {
       id: String(Date.now()),
       tabel_terkait: 'pengeluaran',
@@ -288,56 +362,84 @@ export default function App() {
       aksi: 'INSERT',
       data_sebelum: null,
       data_sesudah: newTx,
-      user_id: userSession?.id || 'bendahara_main',
+      user_id: userSession?.id || 'demo_local',
       waktu: new Date().toISOString()
     };
     setAuditLogs(prev => [localAudit, ...prev]);
 
-    showToast('Pengeluaran Kas berhasil dicatat!');
+    showToast('[Demo Lokal] Pengeluaran Kas dicatat sementara di browser ini!');
     return { success: true };
   };
 
   const handleDeletePemasukan = async (id: string) => {
     if (!confirm('Hapus transaksi pemasukan ini?')) return;
-    setPemasukanList(prev => prev.filter(x => x.id !== id));
+
     if (isConnectedToSupabase) {
-      await deletePemasukanSupabase(id);
+      // Poin 14 panduan: konfirmasi -> DELETE Supabase -> kalau berhasil
+      // baru fetch ulang & update state. Kalau gagal, data JANGAN hilang
+      // dari UI seperti perilaku lama (filter local state duluan).
+      const res = await deletePemasukanSupabase(id);
+      if (!res.success) {
+        showToast(`Gagal menghapus transaksi: ${res.message}`);
+        return;
+      }
+      await refreshPemasukan();
       refreshAuditLogs();
+      showToast('Transaksi pemasukan dihapus dari database');
+      return;
     }
-    showToast('Transaksi pemasukan dihapus');
+
+    setPemasukanList(prev => prev.filter(x => x.id !== id));
+    showToast('[Demo Lokal] Transaksi pemasukan dihapus');
   };
 
   const handleDeletePengeluaran = async (id: string) => {
     if (!confirm('Hapus transaksi pengeluaran ini?')) return;
-    setPengeluaranList(prev => prev.filter(x => x.id !== id));
+
     if (isConnectedToSupabase) {
-      await deletePengeluaranSupabase(id);
+      const res = await deletePengeluaranSupabase(id);
+      if (!res.success) {
+        showToast(`Gagal menghapus transaksi: ${res.message}`);
+        return;
+      }
+      await refreshPengeluaran();
       refreshAuditLogs();
+      showToast('Transaksi pengeluaran dihapus dari database');
+      return;
     }
-    showToast('Transaksi pengeluaran dihapus');
+
+    setPengeluaranList(prev => prev.filter(x => x.id !== id));
+    showToast('[Demo Lokal] Transaksi pengeluaran dihapus');
   };
 
-  const handleSaveSiswaTagihan = (data: {
+  const handleSaveSiswaTagihan = async (data: {
     nama: string;
     kelas: string;
     jenis: string;
     target: number;
     catatan?: string;
   }) => {
-    const id = generateNextId(siswaTagihanList, 'ST');
-    const newSiswa: SiswaTagihan = {
-      id,
-      nama: data.nama,
-      kelas: data.kelas,
-      jenis: data.jenis,
-      target: data.target,
-      catatan: data.catatan
-    };
+    if (isConnectedToSupabase) {
+      // Poin 7 panduan: siswa & tagihan server-side, bukan hanya
+      // setSiswaTagihanList seperti sebelumnya.
+      const res = await insertSiswaTagihan(data);
+      if (!res.success) {
+        showToast(`Gagal menyimpan tagihan siswa: ${res.message}`);
+        return;
+      }
+      await refreshSiswaTagihan();
+      refreshAuditLogs();
+      showToast(`Tagihan siswa a.n ${data.nama} berhasil disimpan ke database`);
+      return;
+    }
+
+    const id = generateDemoId(siswaTagihanList, 'ST');
+    const newSiswa: SiswaTagihan = { id, ...data };
     setSiswaTagihanList(prev => [...prev, newSiswa]);
-    showToast(`Tagihan siswa a.n ${data.nama} berhasil ditambahkan`);
+    showToast(`[Demo Lokal] Tagihan siswa a.n ${data.nama} ditambahkan`);
   };
 
-  const handleSaveBayarSiswa = (data: {
+  const handleSaveBayarSiswa = async (data: {
     siswaId: string;
     tanggal: string;
     noBukti: string;
@@ -346,7 +448,30 @@ export default function App() {
     const siswa = siswaTagihanList.find(s => s.id === data.siswaId);
     if (!siswa) return;
 
-    const idBaru = generateNextId(pemasukanList, 'IN');
+    if (isConnectedToSupabase) {
+      // Poin 6 panduan: pembayaran siswa WAJIB masuk Supabase lewat RPC
+      // catat_pembayaran_siswa(), bukan hanya menambah ke React State
+      // seperti handleSaveBayarSiswa sebelumnya. Setelah reload, pembayaran
+      // harus tetap ada.
+      const res = await rpcCatatPembayaranSiswa({
+        siswaId: data.siswaId,
+        noBukti: data.noBukti,
+        tanggal: data.tanggal,
+        nominal: data.nominal
+      });
+
+      if (!res.success) {
+        showToast(`Gagal mencatat pembayaran: ${res.message}`);
+        return;
+      }
+
+      await refreshPemasukan();
+      refreshAuditLogs();
+      showToast(`Pembayaran ${siswa.nama} sebesar ${formatRupiah(data.nominal)} berhasil disimpan ke database!`);
+      return;
+    }
+
+    const idBaru = generateDemoId(pemasukanList, 'IN');
     const newIn: Pemasukan = {
       id: idBaru,
       noBukti: data.noBukti || idBaru,
@@ -358,29 +483,186 @@ export default function App() {
       status: 'Selesai',
       siswaId: siswa.id
     };
-
     setPemasukanList(prev => [newIn, ...prev]);
-    showToast(`Pembayaran ${siswa.nama} sebesar ${formatRupiah(data.nominal)} berhasil dicatat!`);
+    showToast(`[Demo Lokal] Pembayaran ${siswa.nama} sebesar ${formatRupiah(data.nominal)} dicatat sementara`);
   };
 
-  const handleDeleteTagihan = (id: string) => {
+  const handleDeleteTagihan = async (id: string) => {
     const siswa = siswaTagihanList.find(s => s.id === id);
     if (!siswa) return;
     if (!confirm(`Hapus data tagihan a.n ${siswa.nama}?`)) return;
+
+    if (isConnectedToSupabase) {
+      const res = await deleteSiswaTagihan(id);
+      if (!res.success) {
+        showToast(`Gagal menghapus data tagihan: ${res.message}`);
+        return;
+      }
+      await refreshSiswaTagihan();
+      refreshAuditLogs();
+      showToast('Data tagihan dihapus dari database');
+      return;
+    }
+
     setSiswaTagihanList(prev => prev.filter(s => s.id !== id));
-    showToast('Data tagihan dihapus');
+    showToast('[Demo Lokal] Data tagihan dihapus');
   };
 
-  // Logo upload
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Logo upload -- poin 10 panduan: produksi memakai Supabase Storage +
+  // URL disimpan di konfigurasi_lembaga, bukan Base64 permanen di state.
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    if (isConnectedToSupabase) {
+      const res = await uploadLogoToStorage(file);
+      if (!res.success) {
+        showToast(`Gagal upload logo: ${res.message}`);
+        return;
+      }
+      setKonfigurasi(prev => ({ ...prev, logoUrl: res.url || null }));
+      showToast('Logo lembaga berhasil disimpan ke Supabase Storage!');
+      return;
+    }
+
+    // Mode Demo Lokal: Base64 sementara di browser (tidak permanen).
     const reader = new FileReader();
     reader.onload = (ev) => {
-      setLogoDataUrl(ev.target?.result as string);
-      showToast('Logo lembaga diperbarui!');
+      setKonfigurasi(prev => ({ ...prev, logoUrl: ev.target?.result as string }));
+      showToast('[Demo Lokal] Logo lembaga diperbarui sementara di browser ini!');
     };
     reader.readAsDataURL(file);
+  };
+
+  // Profil lembaga -- poin 9 panduan: UPDATE ke Supabase, status "berhasil"
+  // hanya ditampilkan SETELAH database mengonfirmasi.
+  const handleUpdateLembaga = async (nama: string, jenis: string) => {
+    if (isConnectedToSupabase) {
+      const res = await saveKonfigurasiLembaga({ namaLembaga: nama, jenisLembaga: jenis });
+      if (!res.success) {
+        showToast(`Gagal menyimpan profil lembaga: ${res.message}`);
+        return;
+      }
+      setKonfigurasi(prev => ({ ...prev, namaLembaga: nama, jenisLembaga: jenis }));
+      refreshAuditLogs();
+      showToast('Profil lembaga berhasil disimpan ke database');
+      return;
+    }
+
+    setKonfigurasi(prev => ({ ...prev, namaLembaga: nama, jenisLembaga: jenis }));
+    showToast('[Demo Lokal] Profil lembaga diperbarui sementara');
+  };
+
+  // Master data (poin 8 panduan): setiap tambah/hapus memanggil Supabase,
+  // lalu refresh data -- tidak lagi murni memodifikasi array React State.
+  const handleAddMasterKelas = async () => {
+    const name = prompt('Nama Kelas/Rombel baru:');
+    if (!name) return;
+    const trimmed = name.trim();
+    if (!trimmed) return;
+
+    if (isConnectedToSupabase) {
+      const res = await insertMasterKelas(trimmed);
+      if (!res.success) {
+        showToast(`Gagal menambah kelas: ${res.message}`);
+        return;
+      }
+      const data = await fetchMasterKelas();
+      setMasterKelas(data ?? []);
+      showToast('Kelas/Rombel berhasil disimpan ke database');
+      return;
+    }
+
+    setMasterKelas(prev => [...prev, trimmed]);
+    showToast('[Demo Lokal] Kelas/Rombel ditambahkan sementara');
+  };
+
+  const handleRemoveMasterKelas = async (k: string) => {
+    if (isConnectedToSupabase) {
+      const res = await deleteMasterKelas(k);
+      if (!res.success) {
+        showToast(`Gagal menghapus kelas: ${res.message}`);
+        return;
+      }
+      const data = await fetchMasterKelas();
+      setMasterKelas(data ?? []);
+      return;
+    }
+    setMasterKelas(prev => prev.filter(x => x !== k));
+  };
+
+  const handleAddMasterSumber = async () => {
+    const name = prompt('Nama Sumber Dana baru:');
+    if (!name) return;
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const id = trimmed.replace(/[^a-zA-Z0-9]/g, '');
+    const item: MasterSumberDana = { id, name: trimmed, subs: [] };
+
+    if (isConnectedToSupabase) {
+      const res = await insertMasterSumberDana(item);
+      if (!res.success) {
+        showToast(`Gagal menambah sumber dana: ${res.message}`);
+        return;
+      }
+      const data = await fetchMasterSumberDana();
+      setMasterSumberDana(data ?? []);
+      showToast('Sumber Dana berhasil disimpan ke database');
+      return;
+    }
+
+    setMasterSumberDana(prev => [...prev, item]);
+    showToast('[Demo Lokal] Sumber Dana ditambahkan sementara');
+  };
+
+  const handleRemoveMasterSumber = async (id: string) => {
+    if (isConnectedToSupabase) {
+      const res = await deleteMasterSumberDana(id);
+      if (!res.success) {
+        showToast(`Gagal menghapus sumber dana: ${res.message}`);
+        return;
+      }
+      const data = await fetchMasterSumberDana();
+      setMasterSumberDana(data ?? []);
+      return;
+    }
+    setMasterSumberDana(prev => prev.filter(x => x.id !== id));
+  };
+
+  const handleAddMasterKategori = async () => {
+    const name = prompt('Nama Kategori Pengeluaran baru:');
+    if (!name) return;
+    const trimmed = name.trim();
+    if (!trimmed) return;
+
+    if (isConnectedToSupabase) {
+      const res = await insertMasterKategori(trimmed);
+      if (!res.success) {
+        showToast(`Gagal menambah kategori: ${res.message}`);
+        return;
+      }
+      const data = await fetchMasterKategori();
+      setMasterKategoriPengeluaran(data ?? []);
+      showToast('Kategori Pengeluaran berhasil disimpan ke database');
+      return;
+    }
+
+    setMasterKategoriPengeluaran(prev => [...prev, trimmed]);
+    showToast('[Demo Lokal] Kategori Pengeluaran ditambahkan sementara');
+  };
+
+  const handleRemoveMasterKategori = async (k: string) => {
+    if (isConnectedToSupabase) {
+      const res = await deleteMasterKategori(k);
+      if (!res.success) {
+        showToast(`Gagal menghapus kategori: ${res.message}`);
+        return;
+      }
+      const data = await fetchMasterKategori();
+      setMasterKategoriPengeluaran(data ?? []);
+      return;
+    }
+    setMasterKategoriPengeluaran(prev => prev.filter(x => x !== k));
   };
 
   const unreadBelumLunasCount = siswaTagihanList.filter(s => {
@@ -388,20 +670,20 @@ export default function App() {
     return paid < s.target;
   }).length;
 
-  // Tunggu pengecekan sesi selesai dulu sebelum render apa pun, supaya data
-  // keuangan tidak "berkedip" tampil sebelum status login diketahui.
+  // Tunggu pengecekan sesi + konfigurasi selesai dulu sebelum render apa pun,
+  // supaya data keuangan tidak "berkedip" tampil sebelum status login &
+  // konfigurasi lembaga diketahui (poin 3 panduan).
   if (!authChecked) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-[#FAFAFC] text-slate-500 text-sm font-semibold">
-        Memeriksa sesi login...
+        Memeriksa sesi login &amp; memuat konfigurasi lembaga...
       </div>
     );
   }
 
   // GERBANG LOGIN: kalau terhubung ke Supabase (mode produksi sungguhan) tapi
   // belum ada sesi yang valid, jangan render app/data sama sekali -- hanya
-  // tampilkan layar login. Ini menutup celah lama di mana seluruh dashboard
-  // keuangan bisa diakses tanpa login sama sekali.
+  // tampilkan layar login.
   if (isConnectedToSupabase && !userSession) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-[#FAFAFC]">
@@ -412,12 +694,18 @@ export default function App() {
           onLoginSuccess={(session) => {
             setUserSession(session);
             setIsAuthModalOpen(false);
+            checkAndSyncSupabase();
           }}
           showToast={showToast}
         />
       </div>
     );
   }
+
+  const currentLembaga = konfigurasi.namaLembaga || 'Lembaga Belum Diatur';
+  const jenisLembaga = konfigurasi.jenisLembaga;
+  const logoDataUrl = konfigurasi.logoUrl;
+  const saldoAwal = konfigurasi.saldoAwal;
 
   return (
     <div className="flex h-screen w-full overflow-hidden relative bg-[#FAFAFC] text-slate-800 antialiased font-sans">
@@ -437,7 +725,7 @@ export default function App() {
       )}
 
       {/* Sidebar Navigation */}
-      <Sidebar 
+      <Sidebar
         activeTab={activeTab}
         onSwitchTab={setActiveTab}
         pemasukanCount={pemasukanList.length}
@@ -451,12 +739,10 @@ export default function App() {
       {/* Main Area */}
       <div className={`flex-1 flex flex-col h-full overflow-hidden ${!isConnectedToSupabase ? 'pt-5' : ''}`}>
         {/* Top Navbar */}
-        <Navbar 
+        <Navbar
           currentLembaga={currentLembaga}
           onSelectLembaga={(nama, jenis) => {
-            setCurrentLembaga(nama);
-            setJenisLembaga(jenis);
-            showToast(`Lembaga dialihkan ke ${nama}`);
+            handleUpdateLembaga(nama, jenis);
           }}
           onOpenPemasukanModal={() => setIsPemasukanModalOpen(true)}
           onOpenPengeluaranModal={() => setIsPengeluaranModalOpen(true)}
@@ -477,7 +763,7 @@ export default function App() {
         {/* Content Body */}
         <main className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar">
           {activeTab === 'dashboard' && (
-            <DashboardView 
+            <DashboardView
               pemasukanList={pemasukanList}
               pengeluaranList={pengeluaranList}
               masterSumberDana={masterSumberDana}
@@ -488,7 +774,7 @@ export default function App() {
           )}
 
           {activeTab === 'pemasukan' && (
-            <PemasukanView 
+            <PemasukanView
               pemasukanList={pemasukanList}
               masterSumberDana={masterSumberDana}
               onOpenModal={() => setIsPemasukanModalOpen(true)}
@@ -499,7 +785,7 @@ export default function App() {
           )}
 
           {activeTab === 'pengeluaran' && (
-            <PengeluaranView 
+            <PengeluaranView
               pengeluaranList={pengeluaranList}
               masterKategoriPengeluaran={masterKategoriPengeluaran}
               onOpenModal={() => setIsPengeluaranModalOpen(true)}
@@ -509,7 +795,7 @@ export default function App() {
           )}
 
           {activeTab === 'siswa' && (
-            <SiswaView 
+            <SiswaView
               siswaTagihanList={siswaTagihanList}
               pemasukanList={pemasukanList}
               masterKelas={masterKelas}
@@ -533,7 +819,7 @@ export default function App() {
           )}
 
           {activeTab === 'laporan' && (
-            <LaporanView 
+            <LaporanView
               pemasukanList={pemasukanList}
               pengeluaranList={pengeluaranList}
               currentLembaga={currentLembaga}
@@ -545,7 +831,7 @@ export default function App() {
           )}
 
           {activeTab === 'pengaturan' && (
-            <PengaturanView 
+            <PengaturanView
               currentLembaga={currentLembaga}
               jenisLembaga={jenisLembaga}
               logoDataUrl={logoDataUrl}
@@ -554,32 +840,16 @@ export default function App() {
               masterKategoriPengeluaran={masterKategoriPengeluaran}
               auditLogs={auditLogs}
               saldoAwal={saldoAwal}
-              onUpdateLembaga={(nama, jenis) => {
-                setCurrentLembaga(nama);
-                setJenisLembaga(jenis);
-                showToast('Profil lembaga disimpan');
-              }}
+              onUpdateLembaga={handleUpdateLembaga}
               onLogoUpload={handleLogoUpload}
-              onRemoveLogo={() => setLogoDataUrl(null)}
+              onRemoveLogo={() => setKonfigurasi(prev => ({ ...prev, logoUrl: null }))}
               onOpenWizard={() => showToast('Menjalankan Setup Wizard...')}
-              onAddMasterKelas={() => {
-                const name = prompt('Nama Kelas/Rombel baru:');
-                if (name) setMasterKelas(prev => [...prev, name.trim()]);
-              }}
-              onRemoveMasterKelas={(k) => setMasterKelas(prev => prev.filter(x => x !== k))}
-              onAddMasterSumber={() => {
-                const name = prompt('Nama Sumber Dana baru:');
-                if (name) {
-                  const id = name.replace(/[^a-zA-Z0-9]/g, '');
-                  setMasterSumberDana(prev => [...prev, { id, name: name.trim(), subs: [] }]);
-                }
-              }}
-              onRemoveMasterSumber={(id) => setMasterSumberDana(prev => prev.filter(x => x.id !== id))}
-              onAddMasterKategori={() => {
-                const name = prompt('Nama Kategori Pengeluaran baru:');
-                if (name) setMasterKategoriPengeluaran(prev => [...prev, name.trim()]);
-              }}
-              onRemoveMasterKategori={(k) => setMasterKategoriPengeluaran(prev => prev.filter(x => x !== k))}
+              onAddMasterKelas={handleAddMasterKelas}
+              onRemoveMasterKelas={handleRemoveMasterKelas}
+              onAddMasterSumber={handleAddMasterSumber}
+              onRemoveMasterSumber={handleRemoveMasterSumber}
+              onAddMasterKategori={handleAddMasterKategori}
+              onRemoveMasterKategori={handleRemoveMasterKategori}
               onRefreshAuditLogs={refreshAuditLogs}
               onUpdateSaldoAwal={handleUpdateSaldoAwal}
               onResetAllData={handleResetAllData}
@@ -590,7 +860,7 @@ export default function App() {
       </div>
 
       {/* MODALS */}
-      <AuthModal 
+      <AuthModal
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
         userSession={userSession}
@@ -599,14 +869,14 @@ export default function App() {
         isDemoMode={!isConnectedToSupabase}
       />
 
-      <SupabaseConfigModal 
+      <SupabaseConfigModal
         isOpen={isSupabaseModalOpen}
         onClose={() => setIsSupabaseModalOpen(false)}
         onConfigSaved={() => checkAndSyncSupabase()}
         showToast={showToast}
       />
 
-      <ModalPemasukan 
+      <ModalPemasukan
         isOpen={isPemasukanModalOpen}
         onClose={() => setIsPemasukanModalOpen(false)}
         masterSumberDana={masterSumberDana}
@@ -614,21 +884,21 @@ export default function App() {
         onSave={handleSavePemasukan}
       />
 
-      <ModalPengeluaran 
+      <ModalPengeluaran
         isOpen={isPengeluaranModalOpen}
         onClose={() => setIsPengeluaranModalOpen(false)}
         masterKategoriPengeluaran={masterKategoriPengeluaran}
         onSave={handleSavePengeluaran}
       />
 
-      <ModalSiswaTagihanPropsModal 
+      <ModalSiswaTagihanPropsModal
         isOpen={isSiswaTagihanModalOpen}
         onClose={() => setIsSiswaTagihanModalOpen(false)}
         masterKelas={masterKelas}
         onSave={handleSaveSiswaTagihan}
       />
 
-      <ModalSiswaBayarPropsModal 
+      <ModalSiswaBayarPropsModal
         isOpen={isSiswaBayarModalOpen}
         onClose={() => setIsSiswaBayarModalOpen(false)}
         siswa={selectedSiswaForBayar}
@@ -637,7 +907,7 @@ export default function App() {
         onSave={handleSaveBayarSiswa}
       />
 
-      <ModalBlueprint 
+      <ModalBlueprint
         isOpen={isBlueprintModalOpen}
         onClose={() => setIsBlueprintModalOpen(false)}
       />

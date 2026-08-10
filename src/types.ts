@@ -52,6 +52,17 @@ export interface AuditLog {
   waktu: string;
 }
 
+export interface KonfigurasiLembaga {
+  namaLembaga: string;
+  jenisLembaga: string;
+  logoUrl: string | null;
+  saldoAwal: number;
+  npsn?: string;
+  alamat?: string;
+  kontak?: string;
+  website?: string;
+}
+
 export interface SupabaseConfig {
   url: string;
   anonKey: string;
