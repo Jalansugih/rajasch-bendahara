@@ -146,7 +146,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               SR
             </div>
             <div className="truncate">
-              <p className="text-xs font-semibold text-slate-900 truncate">Hj. Siti Rahmah, S.Pd</p>
+              <p className="text-xs font-semibold text-slate-900 truncate">M. Rizki Mulyana, S.Pd</p>
               <p className="text-[10px] text-slate-500 truncate">Bendahara Utama</p>
             </div>
           </div>

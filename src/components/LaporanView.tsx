@@ -291,13 +291,13 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
               <div>
                 <p className="text-slate-600">Mengetahui,</p>
                 <p className="font-bold text-slate-900 mb-16">Kepala Sekolah {currentLembaga}</p>
-                <p className="font-bold text-slate-900 underline">Drs. H. Mulyadi, M.Pd</p>
+                <p className="font-bold text-slate-900 underline">Nama Kepala Sekolah Madrasah</p>
                 <p className="text-[10px] text-slate-500">NIP. 19680412 199303 1 002</p>
               </div>
               <div>
                 <p className="text-slate-600">Kota Pendidikan, {reportMonth}</p>
                 <p className="font-bold text-slate-900 mb-16">Bendahara Sekolah</p>
-                <p className="font-bold text-slate-900 underline">Hj. Siti Rahmah, S.Pd</p>
+                <p className="font-bold text-slate-900 underline">M. Rizki Mulyana, S.Pd</p>
                 <p className="text-[10px] text-slate-500">NIP. 19750820 200501 2 004</p>
               </div>
             </div>
