@@ -68,7 +68,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               {/* Logo SVG */}
               <div className="w-9 h-9 flex items-center justify-center shrink-0">
                 <img
-                  src="/logo-rk-bendahara.svg"
+                  src="/logo-rk-bendahara.png"
                   alt="RajaKas.id"
                   className="w-9 h-9 object-contain"
                 />
