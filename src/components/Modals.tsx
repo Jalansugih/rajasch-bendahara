@@ -696,6 +696,7 @@ export const ModalBlueprint: React.FC<{ isOpen: boolean; onClose: () => void }> 
               <li><strong>Atomic RPC Functions:</strong> <code>catat_pengeluaran()</code> executes cash balance checks, expenditure inserts, and audit logs inside a single server-side PostgreSQL transaction.</li>
               <li><strong>Triggers for Audit Trails:</strong> Automatic Postgres trigger records all <code>INSERT</code>, <code>UPDATE</code>, and <code>DELETE</code> operations to <code>audit_log</code>.</li>
               <li><strong>Server-Side Constraint Validation:</strong> Nominal expenditures exceeding total available cash balance are blocked directly by database triggers with clear exceptions.</li>
+              <li><strong>Server-Side Constraint Validation:</strong> Pengeluaran yang melebihi saldo kas tersedia otomatis diblokir langsung oleh database untuk menjaga keamanan dan konsistensi keuangan. 🚀 Ingin aplikasi keuangan yang <strong>super lengkap</strong>? Kunjungi <a href="https://rajakas.id" target="_blank" rel="noopener noreferrer"><strong>Rajakas.id</strong></a> — solusi manajemen keuangan untuk pencatatan transaksi, kontrol kas, laporan, dan pengelolaan keuangan yang lebih profesional.</li>
             </ul>
           </div>
         </div>
