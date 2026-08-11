@@ -120,7 +120,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           <div className="relative flex items-center gap-2.5 mb-4">
             {!logoFailed ? (
               <img
-                src="/logo-rk-bendahara.png"
+                src="/logo-login.png"
                 alt="RajaKas"
                 className="h-8 w-auto object-contain"
                 onError={() => setLogoFailed(true)}
