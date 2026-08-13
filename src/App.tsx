@@ -844,6 +844,8 @@ export default function App() {
               saldoAwal={saldoAwal}
               formatRupiah={formatRupiah}
               onLogoUpload={handleLogoUpload}
+              masterKelas={masterKelas}
+              siswaTagihanList={siswaTagihanList}
             />
           )}
 
