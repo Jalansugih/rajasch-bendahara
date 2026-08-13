@@ -29,7 +29,8 @@ import {
 } from './lib/pemasukan';
 
 import {
-  fetchPengeluaranFromSupabase, rpcCatatPengeluaran, deletePengeluaranSupabase
+  fetchPengeluaranFromSupabase, rpcCatatPengeluaran, deletePengeluaranSupabase,
+  uploadBuktiPengeluaranToStorage
 } from './lib/pengeluaran';
 
 import {
@@ -308,8 +309,20 @@ export default function App() {
     kategori: string;
     nominal: number;
     keterangan: string;
+    buktiFile?: File | null;
   }): Promise<{ success: boolean; message?: string }> => {
     if (isConnectedToSupabase) {
+      // Upload nota/kwitansi (jika ada) ke Supabase Storage dulu, baru
+      // simpan URL-nya bersamaan dengan transaksi lewat RPC di bawah.
+      let buktiUrl: string | undefined;
+      if (data.buktiFile) {
+        const uploadRes = await uploadBuktiPengeluaranToStorage(data.buktiFile);
+        if (!uploadRes.success) {
+          return { success: false, message: uploadRes.message };
+        }
+        buktiUrl = uploadRes.url;
+      }
+
       // Poin 13 panduan: RPC catat_pengeluaran() dipertahankan (validasi
       // saldo server-side), TANPA mengirim ID buatan frontend.
       const res = await rpcCatatPengeluaran({
@@ -317,7 +330,8 @@ export default function App() {
         tanggal: data.tanggal,
         kategori: data.kategori,
         nominal: data.nominal,
-        keterangan: data.keterangan
+        keterangan: data.keterangan,
+        buktiUrl
       });
 
       if (!res.success) {
@@ -351,7 +365,10 @@ export default function App() {
       kategori: data.kategori,
       nominal: data.nominal,
       keterangan: data.keterangan,
-      status: 'Terbayar'
+      status: 'Terbayar',
+      // Mode Demo Lokal: tidak ada Supabase Storage, jadi hanya pakai
+      // object URL sementara di browser (hilang saat refresh halaman).
+      buktiUrl: data.buktiFile ? URL.createObjectURL(data.buktiFile) : undefined
     };
     setPengeluaranList(prev => [newTx, ...prev]);
 

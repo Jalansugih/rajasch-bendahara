@@ -113,6 +113,7 @@ CREATE TABLE pengeluaran (
     nominal NUMERIC(15,2) NOT NULL CHECK (nominal > 0),
     keterangan TEXT NOT NULL,
     status VARCHAR(20) DEFAULT 'Terbayar',
+    bukti_url TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     created_by UUID
 );
@@ -214,7 +215,8 @@ CREATE OR REPLACE FUNCTION catat_pengeluaran(
     p_kategori TEXT,
     p_nominal NUMERIC,
     p_keterangan TEXT,
-    p_status TEXT DEFAULT 'Terbayar'
+    p_status TEXT DEFAULT 'Terbayar',
+    p_bukti_url TEXT DEFAULT NULL
 )
 RETURNS JSONB AS $$
 DECLARE
@@ -224,8 +226,8 @@ BEGIN
         RAISE EXCEPTION 'NOMINAL_INVALID: Nominal pengeluaran harus lebih dari Rp 0';
     END IF;
 
-    INSERT INTO pengeluaran (no_bukti, tanggal, kategori, nominal, keterangan, status, created_by)
-    VALUES (p_no_bukti, p_tanggal, p_kategori, p_nominal, p_keterangan, p_status, auth.uid())
+    INSERT INTO pengeluaran (no_bukti, tanggal, kategori, nominal, keterangan, status, bukti_url, created_by)
+    VALUES (p_no_bukti, p_tanggal, p_kategori, p_nominal, p_keterangan, p_status, p_bukti_url, auth.uid())
     RETURNING * INTO v_inserted_row;
 
     RETURN row_to_json(v_inserted_row)::jsonb;
@@ -313,8 +315,8 @@ CREATE POLICY "Hanya user login - konfigurasi_lembaga" ON konfigurasi_lembaga
 -- 14. RPC catat_pengeluaran() & catat_pembayaran_siswa() berjalan SECURITY
 -- INVOKER (default) sehingga tetap tunduk pada RLS di atas -- hanya boleh
 -- dieksekusi oleh role 'authenticated', bukan 'anon'.
-REVOKE ALL ON FUNCTION catat_pengeluaran(text, date, text, numeric, text, text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION catat_pengeluaran(text, date, text, numeric, text, text) TO authenticated;
+REVOKE ALL ON FUNCTION catat_pengeluaran(text, date, text, numeric, text, text, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION catat_pengeluaran(text, date, text, numeric, text, text, text) TO authenticated;
 REVOKE ALL ON FUNCTION catat_pembayaran_siswa(uuid, text, date, text, numeric) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION catat_pembayaran_siswa(uuid, text, date, text, numeric) TO authenticated;
 
@@ -334,9 +336,26 @@ CREATE POLICY "Logo - upload user login" ON storage.objects
 CREATE POLICY "Logo - update user login" ON storage.objects
   FOR UPDATE USING (bucket_id = 'logos' AND auth.role() = 'authenticated');
 
+-- 16. SUPABASE STORAGE: bucket untuk nota/kwitansi bukti pengeluaran.
+-- Jalankan bagian ini SETELAH bucket 'bukti-pengeluaran' dibuat manual di
+-- menu Storage (Supabase Dashboard -> Storage -> New Bucket -> nama
+-- "bukti-pengeluaran", tandai Public bucket agar foto nota bisa ditampilkan
+-- di laporan/detail transaksi).
+DROP POLICY IF EXISTS "Bukti Pengeluaran - baca publik" ON storage.objects;
+DROP POLICY IF EXISTS "Bukti Pengeluaran - upload user login" ON storage.objects;
+DROP POLICY IF EXISTS "Bukti Pengeluaran - update user login" ON storage.objects;
+
+CREATE POLICY "Bukti Pengeluaran - baca publik" ON storage.objects
+  FOR SELECT USING (bucket_id = 'bukti-pengeluaran');
+CREATE POLICY "Bukti Pengeluaran - upload user login" ON storage.objects
+  FOR INSERT WITH CHECK (bucket_id = 'bukti-pengeluaran' AND auth.role() = 'authenticated');
+CREATE POLICY "Bukti Pengeluaran - update user login" ON storage.objects
+  FOR UPDATE USING (bucket_id = 'bukti-pengeluaran' AND auth.role() = 'authenticated');
+
 -- SELESAI. SILAKAN TEKAN "RUN" DI SUPABASE SQL EDITOR!
 -- Setelah ini jalan:
--- 1) Buat bucket Storage "logos" (Public) lewat Dashboard jika belum ada.
+-- 1) Buat bucket Storage "logos" DAN "bukti-pengeluaran" (keduanya Public)
+--    lewat Dashboard jika belum ada.
 -- 2) Buat akun bendahara di Authentication > Users > Add User.
 -- 3) Isi profil lembaga & saldo kas awal lewat menu Pengaturan di aplikasi
 --    (sekarang tersimpan ke tabel konfigurasi_lembaga, bukan hardcode lagi).
@@ -349,3 +368,29 @@ CREATE POLICY "Logo - update user login" ON storage.objects
 -- dan ganti seluruh policy RLS di atas dari "auth.role() = 'authenticated'"
 -- menjadi "lembaga_id = (SELECT lembaga_id FROM user_lembaga WHERE user_id = auth.uid())"
 -- agar User A tidak bisa melihat data Lembaga B.
+--
+-- CATATAN UPGRADE TANPA RESET DATA: jika project Anda sudah berisi data
+-- pengeluaran produksi dan TIDAK ingin menjalankan ulang seluruh script di
+-- atas (yang men-DROP tabel), cukup jalankan blok berikut saja untuk
+-- menambahkan dukungan "Upload Nota / Kwitansi":
+--
+--   ALTER TABLE pengeluaran ADD COLUMN IF NOT EXISTS bukti_url TEXT;
+--
+--   CREATE OR REPLACE FUNCTION catat_pengeluaran(
+--       p_no_bukti TEXT, p_tanggal DATE, p_kategori TEXT, p_nominal NUMERIC,
+--       p_keterangan TEXT, p_status TEXT DEFAULT 'Terbayar',
+--       p_bukti_url TEXT DEFAULT NULL
+--   ) RETURNS JSONB AS $$
+--   DECLARE v_inserted_row RECORD;
+--   BEGIN
+--       IF p_nominal <= 0 THEN
+--           RAISE EXCEPTION 'NOMINAL_INVALID: Nominal pengeluaran harus lebih dari Rp 0';
+--       END IF;
+--       INSERT INTO pengeluaran (no_bukti, tanggal, kategori, nominal, keterangan, status, bukti_url, created_by)
+--       VALUES (p_no_bukti, p_tanggal, p_kategori, p_nominal, p_keterangan, p_status, p_bukti_url, auth.uid())
+--       RETURNING * INTO v_inserted_row;
+--       RETURN row_to_json(v_inserted_row)::jsonb;
+--   END; $$ LANGUAGE plpgsql;
+--
+--   (lalu buat bucket Storage "bukti-pengeluaran" (Public) dan jalankan
+--   blok policy "Bukti Pengeluaran - ..." di atas.)

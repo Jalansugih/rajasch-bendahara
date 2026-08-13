@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   X, ArrowDownLeft, ArrowUpRight, GraduationCap, HandCoins, 
-  Compass, Wand2, ShieldAlert, AlertCircle 
+  Compass, Wand2, ShieldAlert, AlertCircle, UploadCloud, FileText 
 } from 'lucide-react';
 import { MasterSumberDana, SiswaTagihan, Pemasukan } from '../types';
 
@@ -252,8 +252,11 @@ interface ModalPengeluaranProps {
     kategori: string;
     nominal: number;
     keterangan: string;
+    buktiFile?: File | null;
   }) => Promise<{ success: boolean; message?: string }>;
 }
+
+const MAX_BUKTI_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
 
 export const ModalPengeluaran: React.FC<ModalPengeluaranProps> = ({
   isOpen,
@@ -267,10 +270,50 @@ export const ModalPengeluaran: React.FC<ModalPengeluaranProps> = ({
   const [customKategori, setCustomKategori] = useState('');
   const [nominal, setNominal] = useState('');
   const [keterangan, setKeterangan] = useState('');
+  const [buktiFile, setBuktiFile] = useState<File | null>(null);
+  const [buktiPreviewUrl, setBuktiPreviewUrl] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   if (!isOpen) return null;
+
+  const handleBuktiChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    setErrorMessage(null);
+
+    if (!file) {
+      setBuktiFile(null);
+      setBuktiPreviewUrl(null);
+      return;
+    }
+
+    if (file.size > MAX_BUKTI_SIZE_BYTES) {
+      setErrorMessage('Ukuran file nota/kwitansi maksimal 5MB.');
+      e.target.value = '';
+      return;
+    }
+
+    setBuktiFile(file);
+    if (file.type.startsWith('image/')) {
+      setBuktiPreviewUrl(URL.createObjectURL(file));
+    } else {
+      setBuktiPreviewUrl(null);
+    }
+  };
+
+  const handleRemoveBukti = () => {
+    setBuktiFile(null);
+    setBuktiPreviewUrl(null);
+  };
+
+  const resetForm = () => {
+    setNoBukti('');
+    setNominal('');
+    setKeterangan('');
+    setCustomKategori('');
+    setBuktiFile(null);
+    setBuktiPreviewUrl(null);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -285,16 +328,14 @@ export const ModalPengeluaran: React.FC<ModalPengeluaranProps> = ({
       noBukti,
       kategori: finalKategori,
       nominal: parseFloat(nominal),
-      keterangan
+      keterangan,
+      buktiFile
     });
 
     setSubmitting(false);
 
     if (res.success) {
-      setNoBukti('');
-      setNominal('');
-      setKeterangan('');
-      setCustomKategori('');
+      resetForm();
       onClose();
     } else {
       // Show server-side constraint validation error (e.g. Saldo tidak cukup)!
@@ -406,6 +447,48 @@ export const ModalPengeluaran: React.FC<ModalPengeluaranProps> = ({
               placeholder="Contoh: Pembelian spidol & kertas HVS A4 untuk ujian" 
               className="w-full bg-slate-50 border border-slate-200 rounded-[14px] px-3 py-2 text-xs text-slate-800 outline-none focus:bg-white focus:border-blue-500"
             />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Upload Nota / Kwitansi</label>
+            {!buktiFile ? (
+              <label
+                htmlFor="bukti-pengeluaran-input"
+                className="flex flex-col items-center justify-center gap-1.5 border-2 border-dashed border-slate-200 rounded-[14px] py-6 px-3 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50/40 transition-colors"
+              >
+                <UploadCloud className="w-5 h-5 text-slate-400" />
+                <span className="text-[11px] text-slate-500">Unggah foto nota tagihan/struk (Opsional)</span>
+                <input
+                  id="bukti-pengeluaran-input"
+                  type="file"
+                  accept="image/*,application/pdf"
+                  onChange={handleBuktiChange}
+                  className="hidden"
+                />
+              </label>
+            ) : (
+              <div className="flex items-center gap-3 border border-slate-200 rounded-[14px] p-2.5">
+                {buktiPreviewUrl ? (
+                  <img src={buktiPreviewUrl} alt="Preview nota" className="w-12 h-12 rounded-[10px] object-cover shrink-0" />
+                ) : (
+                  <div className="w-12 h-12 rounded-[10px] bg-slate-100 flex items-center justify-center shrink-0">
+                    <FileText className="w-5 h-5 text-slate-400" />
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-semibold text-slate-800 truncate">{buktiFile.name}</p>
+                  <p className="text-[11px] text-slate-500">{(buktiFile.size / 1024).toFixed(0)} KB</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleRemoveBukti}
+                  className="text-slate-400 hover:text-rose-600 p-1 shrink-0"
+                  aria-label="Hapus file"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-100">

@@ -20,6 +20,7 @@ export interface Pengeluaran {
   nominal: number;
   keterangan: string;
   status: string;
+  buktiUrl?: string;
   createdAt?: string;
   createdBy?: string;
 }

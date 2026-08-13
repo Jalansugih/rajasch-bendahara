@@ -3,9 +3,12 @@ import { Pengeluaran } from '../types';
 
 /**
  * src/lib/pengeluaran.ts
- * Poin 13 panduan: RPC catat_pengeluaran() dipertahankan (validasi saldo
- * server-side), tapi TIDAK LAGI mengirim ID buatan frontend -- server yang
- * membuat ID (UUID default pada tabel pengeluaran).
+ * Menjawab poin 13 panduan: pengeluaran dicatat lewat RPC
+ * catat_pengeluaran() dengan validasi saldo server-side (Postgres trigger),
+ * ID selalu dibuat server (UUID default), bukan generateNextId() di frontend.
+ *
+ * Termasuk dukungan upload "Nota / Kwitansi" (bukti_url) ke Supabase
+ * Storage bucket "bukti-pengeluaran" -- lihat supabase/migration.sql.
  */
 
 export async function fetchPengeluaranFromSupabase(): Promise<Pengeluaran[] | null> {
@@ -26,11 +29,45 @@ export async function fetchPengeluaranFromSupabase(): Promise<Pengeluaran[] | nu
       nominal: Number(item.nominal),
       keterangan: item.keterangan,
       status: item.status || 'Terbayar',
+      buktiUrl: item.bukti_url || undefined,
       createdAt: item.created_at,
       createdBy: item.created_by
     }));
   } catch {
     return null;
+  }
+}
+
+/**
+ * Upload file nota/kwitansi ke Supabase Storage bucket "bukti-pengeluaran"
+ * dan kembalikan public URL-nya. Dipanggil SEBELUM rpcCatatPengeluaran,
+ * agar bukti_url bisa langsung disertakan saat INSERT.
+ */
+export async function uploadBuktiPengeluaranToStorage(
+  file: File
+): Promise<{ success: boolean; url?: string; message?: string }> {
+  const client = getSupabaseClient();
+  if (!client) return { success: false, message: 'Supabase belum terhubung.' };
+
+  try {
+    const ext = file.name.split('.').pop() || 'jpg';
+    const path = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+
+    const { error: uploadError } = await client.storage
+      .from('bukti-pengeluaran')
+      .upload(path, file, { upsert: false, cacheControl: '3600' });
+
+    if (uploadError) {
+      return {
+        success: false,
+        message: `Gagal upload nota/kwitansi: ${uploadError.message}. Pastikan bucket "bukti-pengeluaran" sudah dibuat (lihat supabase/migration.sql).`
+      };
+    }
+
+    const { data: publicUrlData } = client.storage.from('bukti-pengeluaran').getPublicUrl(path);
+    return { success: true, url: publicUrlData.publicUrl };
+  } catch (err: any) {
+    return { success: false, message: err.message || 'Gagal upload nota/kwitansi' };
   }
 }
 
@@ -41,15 +78,10 @@ export async function rpcCatatPengeluaran(item: {
   nominal: number;
   keterangan: string;
   status?: string;
-}): Promise<{ success: boolean; data?: any; message?: string }> {
+  buktiUrl?: string;
+}): Promise<{ success: boolean; data?: Pengeluaran; message?: string }> {
   const client = getSupabaseClient();
-
-  if (!client) {
-    return {
-      success: false,
-      message: 'Supabase client belum dikonfigurasi. Menggunakan mode simulasi lokal.'
-    };
-  }
+  if (!client) return { success: false, message: 'Supabase client belum dikonfigurasi.' };
 
   try {
     const { data, error } = await client.rpc('catat_pengeluaran', {
@@ -58,13 +90,11 @@ export async function rpcCatatPengeluaran(item: {
       p_kategori: item.kategori,
       p_nominal: item.nominal,
       p_keterangan: item.keterangan,
-      p_status: item.status || 'Terbayar'
+      p_status: item.status || 'Terbayar',
+      p_bukti_url: item.buktiUrl || null
     });
 
-    if (error) {
-      return { success: false, message: error.message || 'Gagal mengeksekusi RPC catat_pengeluaran()' };
-    }
-
+    if (error) return { success: false, message: error.message || 'Gagal mencatat pengeluaran.' };
     return { success: true, data };
   } catch (err: any) {
     return { success: false, message: err.message || 'Kesalahan koneksi RPC' };
