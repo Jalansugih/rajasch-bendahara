@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Pemasukan, Pengeluaran, SiswaTagihan, MasterSumberDana,
-  AuditLog, UserSession, KonfigurasiLembaga, PeriodePembukuan
+  AuditLog, UserSession, KonfigurasiLembaga
 } from './types';
 
 import {
@@ -38,7 +38,6 @@ import {
 } from './lib/siswa';
 
 import { fetchAuditLogsFromSupabase } from './lib/audit';
-import { fetchPeriodePembukuan, createPeriodePembukuan, closePeriodePembukuan } from './lib/periodePembukuan';
 
 import { Navbar } from './components/Navbar';
 import { Sidebar } from './components/Sidebar';
@@ -66,7 +65,6 @@ export default function App() {
   // (tabel konfigurasi_lembaga), bukan lagi murni React State (poin 2 & 9
   // panduan). Nilai default kosong dipakai sebelum data selesai dimuat.
   const [konfigurasi, setKonfigurasi] = useState<KonfigurasiLembaga>(getDefaultConfiguration());
-  const [periodePembukuanList, setPeriodePembukuanList] = useState<PeriodePembukuan[]>([]);
 
   // App Master Data & Local Store
   const [masterKelas, setMasterKelas] = useState<string[]>([]);
@@ -192,8 +190,6 @@ export default function App() {
       setPengeluaranList(outData ?? []);
       setSiswaTagihanList(stData ?? []);
       setAuditLogs(logs ?? []);
-      const periode = await fetchPeriodePembukuan();
-      setPeriodePembukuanList(periode);
     } else {
       // Mode Demo Lokal: tidak ada Supabase terhubung -> data initial hanya
       // dipakai DI SINI, khusus untuk demo (poin 4 panduan), tidak pernah
@@ -213,8 +209,6 @@ export default function App() {
       setPengeluaranList(INITIAL_PENGELUARAN);
       setSiswaTagihanList(INITIAL_SISWA_TAGIHAN);
       setAuditLogs(INITIAL_AUDIT_LOGS);
-      const demoPeriods = (() => { try { return JSON.parse(localStorage.getItem('rajasch_periode_pembukuan_v1') || '[]'); } catch { return []; } })();
-      setPeriodePembukuanList(demoPeriods);
     }
     setAuthChecked(true);
   };
@@ -252,31 +246,6 @@ export default function App() {
       if (!isNaN(num) && num > maxNum) maxNum = num;
     });
     return `${prefix}-${String(maxNum + 1).padStart(3, '0')}`;
-  };
-
-  const refreshPeriodePembukuan = async () => {
-    const data = await fetchPeriodePembukuan();
-    setPeriodePembukuanList(data);
-  };
-
-  const handleCreatePeriodePembukuan = async (data: { namaPeriode: string; tanggalMulai: string; tanggalAkhir: string; saldoAwal: number }) => {
-    const res = await createPeriodePembukuan(data);
-    if (!res.success) { showToast(res.message || 'Gagal membuat periode.'); return; }
-    await refreshPeriodePembukuan();
-    showToast(`Periode ${data.namaPeriode} berhasil dibuat.`);
-  };
-
-  const handleClosePeriodePembukuan = async (id: string) => {
-    const periode = periodePembukuanList.find(p => p.id === id);
-    if (!periode) return;
-    const totalIn = pemasukanList.filter(x => x.tanggal >= periode.tanggalMulai && x.tanggal <= periode.tanggalAkhir).reduce((a, x) => a + x.nominal, 0);
-    const totalOut = pengeluaranList.filter(x => x.tanggal >= periode.tanggalMulai && x.tanggal <= periode.tanggalAkhir).reduce((a, x) => a + x.nominal, 0);
-    const saldoAkhir = periode.saldoAwal + totalIn - totalOut;
-    if (!confirm(`Tutup ${periode.namaPeriode}?\nSaldo akhir periode: ${formatRupiah(saldoAkhir)}`)) return;
-    const res = await closePeriodePembukuan(id, saldoAkhir);
-    if (!res.success) { showToast(res.message || 'Gagal menutup periode.'); return; }
-    await refreshPeriodePembukuan();
-    showToast(`${periode.namaPeriode} ditutup. Saldo akhir ${formatRupiah(saldoAkhir)}.`);
   };
 
   const formatRupiah = (num: number) => {
@@ -584,15 +553,6 @@ export default function App() {
 
   // Profil lembaga -- poin 9 panduan: UPDATE ke Supabase, status "berhasil"
   // hanya ditampilkan SETELAH database mengonfirmasi.
-  const handleUpdateTahunAjaran = async (tahun: string) => {
-    if (isConnectedToSupabase) {
-      const res = await saveKonfigurasiLembaga({ tahunAjaranAktif: tahun });
-      if (!res.success) { showToast(`Gagal menyimpan tahun ajaran: ${res.message}`); return; }
-    }
-    setKonfigurasi(prev => ({ ...prev, tahunAjaranAktif: tahun }));
-    showToast('Tahun Ajaran Aktif berhasil diperbarui.');
-  };
-
   const handleUpdateLembaga = async (nama: string, jenis: string) => {
     if (isConnectedToSupabase) {
       const res = await saveKonfigurasiLembaga({ namaLembaga: nama, jenisLembaga: jenis });
@@ -825,10 +785,8 @@ export default function App() {
               pengeluaranList={pengeluaranList}
               masterSumberDana={masterSumberDana}
               saldoAwal={saldoAwal}
-              periodePembukuanList={periodePembukuanList}
               siswaTagihanList={siswaTagihanList}
               masterKelas={masterKelas}
-              tahunAjaranAktif={konfigurasi.tahunAjaranAktif || '2026/2027'}
               formatRupiah={formatRupiah}
               onSwitchTab={setActiveTab}
             />
@@ -895,18 +853,13 @@ export default function App() {
             <PengaturanView
               currentLembaga={currentLembaga}
               jenisLembaga={jenisLembaga}
-              tahunAjaranAktif={konfigurasi.tahunAjaranAktif || '2026/2027'}
               logoDataUrl={logoDataUrl}
               masterKelas={masterKelas}
               masterSumberDana={masterSumberDana}
               masterKategoriPengeluaran={masterKategoriPengeluaran}
               auditLogs={auditLogs}
               saldoAwal={saldoAwal}
-              periodePembukuanList={periodePembukuanList}
-              onCreatePeriodePembukuan={handleCreatePeriodePembukuan}
-              onClosePeriodePembukuan={handleClosePeriodePembukuan}
               onUpdateLembaga={handleUpdateLembaga}
-              onUpdateTahunAjaran={handleUpdateTahunAjaran}
               onLogoUpload={handleLogoUpload}
               onRemoveLogo={() => setKonfigurasi(prev => ({ ...prev, logoUrl: null }))}
               onOpenWizard={() => showToast('Menjalankan Setup Wizard...')}

@@ -62,19 +62,6 @@ export interface KonfigurasiLembaga {
   alamat?: string;
   kontak?: string;
   website?: string;
-  tahunAjaranAktif?: string;
-}
-
-export interface PeriodePembukuan {
-  id: string;
-  namaPeriode: string;
-  tanggalMulai: string;
-  tanggalAkhir: string;
-  saldoAwal: number;
-  saldoAkhir: number | null;
-  status: 'AKTIF' | 'DITUTUP';
-  createdAt?: string;
-  closedAt?: string;
 }
 
 export interface SupabaseConfig {

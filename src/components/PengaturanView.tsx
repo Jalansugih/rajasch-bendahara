@@ -3,23 +3,18 @@ import {
   Building, Users, Vault, Tags, Wand2, ShieldAlert, 
   RefreshCw, Trash2, Plus, Eye, Wallet, Save, RotateCcw
 } from 'lucide-react';
-import { MasterSumberDana, AuditLog, PeriodePembukuan } from '../types';
+import { MasterSumberDana, AuditLog } from '../types';
 
 interface PengaturanViewProps {
   currentLembaga: string;
   jenisLembaga: string;
-  tahunAjaranAktif: string;
   logoDataUrl: string | null;
   masterKelas: string[];
   masterSumberDana: MasterSumberDana[];
   masterKategoriPengeluaran: string[];
   auditLogs: AuditLog[];
   saldoAwal: number;
-  periodePembukuanList: PeriodePembukuan[];
-  onCreatePeriodePembukuan: (data: { namaPeriode: string; tanggalMulai: string; tanggalAkhir: string; saldoAwal: number }) => void;
-  onClosePeriodePembukuan: (id: string) => void;
   onUpdateLembaga: (nama: string, jenis: string) => void;
-  onUpdateTahunAjaran: (tahun: string) => void;
   onLogoUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onRemoveLogo: () => void;
   onOpenWizard: () => void;
@@ -38,18 +33,13 @@ interface PengaturanViewProps {
 export const PengaturanView: React.FC<PengaturanViewProps> = ({
   currentLembaga,
   jenisLembaga,
-  tahunAjaranAktif,
   logoDataUrl,
   masterKelas,
   masterSumberDana,
   masterKategoriPengeluaran,
   auditLogs,
   saldoAwal,
-  periodePembukuanList,
-  onCreatePeriodePembukuan,
-  onClosePeriodePembukuan,
   onUpdateLembaga,
-  onUpdateTahunAjaran,
   onLogoUpload,
   onRemoveLogo,
   onOpenWizard,
@@ -69,13 +59,8 @@ export const PengaturanView: React.FC<PengaturanViewProps> = ({
   const [inputKasAwal, setInputKasAwal] = useState<string>(saldoAwal.toString());
   const [namaLembagaInput, setNamaLembagaInput] = useState<string>(currentLembaga);
   const [jenisLembagaInput, setJenisLembagaInput] = useState<string>(jenisLembaga);
-  const [tahunAjaranInput, setTahunAjaranInput] = useState<string>(tahunAjaranAktif);
   const [isWizardModalOpen, setIsWizardModalOpen] = useState<boolean>(false);
   const [wizardStep, setWizardStep] = useState<number>(1);
-  const [periodeNama, setPeriodeNama] = useState('');
-  const [periodeMulai, setPeriodeMulai] = useState('2026-08-01');
-  const [periodeAkhir, setPeriodeAkhir] = useState('2026-08-31');
-  const [periodeSaldoAwal, setPeriodeSaldoAwal] = useState(String(saldoAwal));
 
   const handleSaveProfil = () => {
     if (!namaLembagaInput.trim()) {
@@ -197,11 +182,10 @@ export const PengaturanView: React.FC<PengaturanViewProps> = ({
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Tahun Ajaran Aktif</label>
                 <input 
                   type="text" 
-                  value={tahunAjaranInput}
-                  onChange={(e) => setTahunAjaranInput(e.target.value)} 
+                  value="2025/2026" 
+                  readOnly 
                   className="w-full bg-slate-50 border border-slate-200 rounded-[14px] px-3 py-2 text-xs font-medium text-slate-800 outline-none"
                 />
-                <button type="button" onClick={() => onUpdateTahunAjaran(tahunAjaranInput.trim())} className="mt-1.5 text-[10px] font-bold text-blue-600 hover:text-blue-700">Simpan Tahun Ajaran</button>
               </div>
             </div>
 
@@ -292,46 +276,6 @@ export const PengaturanView: React.FC<PengaturanViewProps> = ({
                     <RotateCcw className="w-3.5 h-3.5" />
                     <span>Reset Semua Angka & Data Transaksi</span>
                   </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Periode Pembukuan */}
-          <div className="pt-2">
-            <h3 className="text-sm font-bold text-slate-900 mb-4 pb-2 border-b border-slate-100 flex items-center gap-2">
-              <Wallet className="w-4 h-4 text-blue-600" /> Periode Pembukuan
-            </h3>
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              <div className="lg:col-span-2 p-4 bg-blue-50/60 border border-blue-200/80 rounded-[14px] space-y-3">
-                <div>
-                  <h4 className="text-xs font-bold text-blue-900">Buat Periode Pembukuan</h4>
-                  <p className="text-[11px] text-blue-700 mt-0.5">Periode adalah cut-off laporan kas. Transaksi tidak dihapus saat periode berganti.</p>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
-                  <input value={periodeNama} onChange={e => setPeriodeNama(e.target.value)} placeholder="Contoh: Agustus 2026" className="px-3 py-2 bg-white border border-blue-200 rounded-[12px] text-xs" />
-                  <input type="date" value={periodeMulai} onChange={e => setPeriodeMulai(e.target.value)} className="px-3 py-2 bg-white border border-blue-200 rounded-[12px] text-xs" />
-                  <input type="date" value={periodeAkhir} onChange={e => setPeriodeAkhir(e.target.value)} className="px-3 py-2 bg-white border border-blue-200 rounded-[12px] text-xs" />
-                  <input type="number" value={periodeSaldoAwal} onChange={e => setPeriodeSaldoAwal(e.target.value)} placeholder="Saldo awal" className="px-3 py-2 bg-white border border-blue-200 rounded-[12px] text-xs font-bold" />
-                </div>
-                <button onClick={() => {
-                  if (!periodeNama.trim()) { showToast('Nama periode wajib diisi.'); return; }
-                  if (periodeAkhir < periodeMulai) { showToast('Tanggal akhir tidak boleh sebelum tanggal mulai.'); return; }
-                  const lastClosed = periodePembukuanList.filter(p => p.status === 'DITUTUP').sort((a,b) => b.tanggalAkhir.localeCompare(a.tanggalAkhir))[0];
-                  const saldo = lastClosed ? (lastClosed.saldoAkhir || 0) : Number(periodeSaldoAwal || 0);
-                  onCreatePeriodePembukuan({ namaPeriode: periodeNama.trim(), tanggalMulai: periodeMulai, tanggalAkhir: periodeAkhir, saldoAwal: saldo });
-                }} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-[12px] text-xs font-semibold">Buat Periode Aktif</button>
-              </div>
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-[14px]">
-                <h4 className="text-xs font-bold text-slate-900 mb-2">Riwayat Periode</h4>
-                <div className="space-y-2 max-h-40 overflow-y-auto">
-                  {periodePembukuanList.length === 0 && <p className="text-[11px] text-slate-500">Belum ada periode pembukuan.</p>}
-                  {periodePembukuanList.map(p => (
-                    <div key={p.id} className="flex items-center justify-between gap-2 p-2 bg-white border border-slate-200 rounded-lg">
-                      <div><p className="text-[11px] font-bold text-slate-800">{p.namaPeriode}</p><p className="text-[10px] text-slate-500">{p.tanggalMulai} – {p.tanggalAkhir} · Saldo awal Rp {Math.round(p.saldoAwal).toLocaleString('id-ID')}</p></div>
-                      {p.status === 'AKTIF' ? <button onClick={() => onClosePeriodePembukuan(p.id)} className="px-2 py-1 bg-amber-100 text-amber-800 rounded-md text-[10px] font-bold">Tutup</button> : <span className="text-[10px] font-bold text-slate-500">Ditutup</span>}
-                    </div>
-                  ))}
                 </div>
               </div>
             </div>
