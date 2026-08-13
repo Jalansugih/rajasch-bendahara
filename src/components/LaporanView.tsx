@@ -187,10 +187,10 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
             <option value="Buku Kas Umum (BKU)">Buku Kas Umum (BKU)</option>
             <option value="Rekapitulasi Pemasukan">Rekapitulasi Pemasukan</option>
             <option value="Rekapitulasi Pengeluaran">Rekapitulasi Pengeluaran</option>
-            <option value="Laporan Saldo & Posisi Kas">Laporan Saldo & Posisi Kas</option>
-            <option value="Laporan Pertanggungjawaban Bulanan">Laporan Pertanggungjawaban Bulanan</option>
+            <option value="Laporan Saldo & Posisi Kas">Saldo & Posisi Kas</option>
+            <option value="Laporan Pertanggungjawaban Bulanan">Pertanggungjawaban Bulanan</option>
             <option value="Infaq / Pembayaran Siswa">Infaq / Pembayaran Siswa</option>
-            <option value="Lainnya">Jenis Laporan Lainnya (Ketik Manual)</option>
+            <option value="Lainnya">Lainnya (Ketik Manual)</option>
           </select>
 
           {selectedReportType === 'Lainnya' && (
