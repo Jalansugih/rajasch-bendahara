@@ -394,3 +394,30 @@ CREATE POLICY "Bukti Pengeluaran - update user login" ON storage.objects
 --
 --   (lalu buat bucket Storage "bukti-pengeluaran" (Public) dan jalankan
 --   blok policy "Bukti Pengeluaran - ..." di atas.)
+
+-- Tambahan Tahap 3: Periode Pembukuan.
+-- Tidak mengubah/menghapus tabel transaksi atau format laporan lama.
+create table if not exists public.periode_pembukuan (
+  id uuid primary key default gen_random_uuid(),
+  nama_periode text not null,
+  tanggal_mulai date not null,
+  tanggal_akhir date not null,
+  saldo_awal numeric(18,2) not null default 0,
+  saldo_akhir numeric(18,2),
+  status text not null default 'AKTIF' check (status in ('AKTIF','DITUTUP')),
+  created_at timestamptz not null default now(),
+  closed_at timestamptz,
+  check (tanggal_akhir >= tanggal_mulai)
+);
+create unique index if not exists uq_periode_pembukuan_aktif on public.periode_pembukuan(status) where status = 'AKTIF';
+alter table public.periode_pembukuan enable row level security;
+do $$
+begin
+  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'periode_pembukuan' and policyname = 'periode_pembukuan_authenticated_all') then
+    create policy "periode_pembukuan_authenticated_all" on public.periode_pembukuan for all to authenticated using (true) with check (true);
+  end if;
+end $$;
+
+
+-- Tambahan: Tahun Ajaran Aktif dapat diatur tanpa mengubah histori transaksi.
+alter table public.konfigurasi_lembaga add column if not exists tahun_ajaran_aktif text not null default '2026/2027';

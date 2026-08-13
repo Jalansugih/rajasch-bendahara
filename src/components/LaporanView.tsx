@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Printer, RefreshCw, Upload, Download, FileSpreadsheet } from 'lucide-react';
-import { Pemasukan, Pengeluaran } from '../types';
+import { Pemasukan, Pengeluaran, SiswaTagihan, PeriodePembukuan } from '../types';
 
 interface LaporanViewProps {
   pemasukanList: Pemasukan[];
@@ -8,6 +8,10 @@ interface LaporanViewProps {
   currentLembaga: string;
   logoDataUrl: string | null;
   saldoAwal: number;
+  periodePembukuanList: PeriodePembukuan[];
+  siswaTagihanList: SiswaTagihan[];
+  masterKelas: string[];
+  tahunAjaranAktif: string;
   formatRupiah: (val: number) => string;
   onLogoUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
@@ -18,26 +22,37 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
   currentLembaga,
   logoDataUrl,
   saldoAwal,
+  periodePembukuanList,
+  siswaTagihanList,
+  masterKelas,
+  tahunAjaranAktif,
   formatRupiah,
   onLogoUpload
 }) => {
   const [selectedReportType, setSelectedReportType] = useState('Buku Kas Umum (BKU)');
   const [customReportType, setCustomReportType] = useState('');
   const [reportMonth, setReportMonth] = useState('Agustus 2026');
+  const [selectedKelas, setSelectedKelas] = useState('Semua Kelas');
+
+  const activePeriod = periodePembukuanList.find(p => p.status === 'AKTIF');
+  useEffect(() => {
+    if (activePeriod) setReportMonth(activePeriod.namaPeriode);
+  }, [activePeriod?.id]);
 
   const reportType = selectedReportType === 'Lainnya' 
     ? (customReportType.trim() || 'Laporan Custom') 
     : selectedReportType;
 
-  // Month mapping to prefix YYYY-MM
-  const getMonthPrefix = (label: string) => {
+  const selectedPeriod = periodePembukuanList.find(p => p.namaPeriode === reportMonth) || activePeriod;
+  const periodPrefix = selectedPeriod ? selectedPeriod.tanggalMulai.slice(0, 7) : getMonthPrefixFallback(reportMonth);
+  function getMonthPrefixFallback(label: string) {
+    const match = label.match(/(\d{4})-(\d{2})/);
+    if (match) return `${match[1]}-${match[2]}`;
     if (label.includes('Agustus')) return '2026-08';
     if (label.includes('Juli')) return '2026-07';
     if (label.includes('Juni')) return '2026-06';
     return '2026-08';
-  };
-
-  const periodPrefix = getMonthPrefix(reportMonth);
+  }
 
   // All transactions sorted chronologically for BKU
   const allTxSorted = [
@@ -45,15 +60,17 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
     ...pengeluaranList.map(x => ({ ...x, type: 'OUT' as const }))
   ].sort((a, b) => new Date(a.tanggal).getTime() - new Date(b.tanggal).getTime());
 
-  let saldoAwalPeriode = saldoAwal;
+  let saldoAwalPeriode = selectedPeriod?.saldoAwal ?? saldoAwal;
   const txDalamPeriode: typeof allTxSorted = [];
 
   allTxSorted.forEach(tx => {
-    const txPrefix = (tx.tanggal || '').slice(0, 7);
-    if (txPrefix === periodPrefix) {
-      txDalamPeriode.push(tx);
-    } else if (txPrefix < periodPrefix) {
-      saldoAwalPeriode += (tx.type === 'IN' ? tx.nominal : -tx.nominal);
+    const txDate = tx.tanggal || '';
+    if (selectedPeriod) {
+      if (txDate >= selectedPeriod.tanggalMulai && txDate <= selectedPeriod.tanggalAkhir) txDalamPeriode.push(tx);
+    } else {
+      const txPrefix = txDate.slice(0, 7);
+      if (txPrefix === periodPrefix) txDalamPeriode.push(tx);
+      else if (txPrefix < periodPrefix) saldoAwalPeriode += (tx.type === 'IN' ? tx.nominal : -tx.nominal);
     }
   });
 
@@ -65,6 +82,16 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
   });
 
   const finalBalance = saldoAwalPeriode + totalIn - totalOut;
+
+  const isStudentReport = selectedReportType === 'Infaq / Pembayaran Siswa';
+  const studentRows = siswaTagihanList
+    .filter(s => selectedKelas === 'Semua Kelas' || s.kelas === selectedKelas)
+    .map(siswa => {
+      const payments = pemasukanList.filter(p => p.siswaId === siswa.id && (!selectedPeriod || (p.tanggal >= selectedPeriod.tanggalMulai && p.tanggal <= selectedPeriod.tanggalAkhir)));
+      const terbayar = payments.reduce((sum, p) => sum + p.nominal, 0);
+      return { siswa, payments, terbayar, sisa: Math.max(0, siswa.target - terbayar) };
+    });
+  const totalStudentPaid = studentRows.reduce((sum, row) => sum + row.terbayar, 0);
 
   // Export report to Excel / CSV format
   const handleExportExcel = () => {
@@ -151,7 +178,7 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
       </div>
 
       {/* REPORT CONFIGURATION PANEL */}
-      <div className="bg-white p-6 rounded-[14px] border border-slate-200/90 shadow-sm grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className={`bg-white p-6 rounded-[14px] border border-slate-200/90 shadow-sm grid grid-cols-1 md:grid-cols-${isStudentReport ? "4" : "3"} gap-4`}>
         <div>
           <label className="block text-xs font-semibold text-slate-700 mb-1.5">Jenis Laporan Administrasi</label>
           <select 
@@ -164,6 +191,7 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
             <option value="Rekapitulasi Pengeluaran">Rekapitulasi Pengeluaran</option>
             <option value="Laporan Saldo & Posisi Kas">Laporan Saldo & Posisi Kas</option>
             <option value="Laporan Pertanggungjawaban Bulanan">Laporan Pertanggungjawaban Bulanan</option>
+            <option value="Infaq / Pembayaran Siswa">Infaq / Pembayaran Siswa</option>
             <option value="Lainnya">Jenis Laporan Lainnya (Ketik Manual)</option>
           </select>
 
@@ -185,11 +213,19 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
             onChange={(e) => setReportMonth(e.target.value)}
             className="w-full bg-slate-50 border border-slate-200 rounded-[14px] px-3 py-2 text-xs font-medium text-slate-800 outline-none focus:border-blue-500"
           >
-            <option value="Agustus 2026">Agustus 2026</option>
-            <option value="Juli 2026">Juli 2026</option>
-            <option value="Juni 2026">Juni 2026</option>
+            {periodePembukuanList.length > 0 ? periodePembukuanList.map(p => <option key={p.id} value={p.namaPeriode}>{p.namaPeriode}{p.status === 'AKTIF' ? ' · Aktif' : ' · Ditutup'}</option>) : <option value={reportMonth}>{reportMonth}</option>}
           </select>
         </div>
+
+        {isStudentReport && (
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1.5">Pilih Kelas</label>
+            <select value={selectedKelas} onChange={e => setSelectedKelas(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-[14px] px-3 py-2 text-xs font-medium text-slate-800 outline-none focus:border-blue-500">
+              <option value="Semua Kelas">Semua Kelas</option>
+              {masterKelas.map(k => <option key={k} value={k}>{k}</option>)}
+            </select>
+          </div>
+        )}
 
         <div className="flex items-end">
           <button 
@@ -229,60 +265,34 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
                 LAPORAN {reportType.toUpperCase()}
               </h3>
               <p className="text-xs text-slate-600 mt-0.5">
-                Periode: <span className="font-semibold">{reportMonth}</span>
+                {isStudentReport ? <>Tahun Ajaran: <span className="font-semibold">{tahunAjaranAktif}</span> · Periode: </> : <>Periode: </>}<span className="font-semibold">{reportMonth}</span>
               </p>
             </div>
 
             {/* Report Table Body */}
-            <table className="w-full text-left border-collapse border border-slate-300 text-[11px] mb-8">
-              <thead>
-                <tr className="bg-slate-100 text-slate-800 font-bold">
-                  <th className="border border-slate-300 p-2 text-center w-8">No</th>
-                  <th className="border border-slate-300 p-2">Tanggal</th>
-                  <th className="border border-slate-300 p-2">No. Bukti</th>
-                  <th className="border border-slate-300 p-2">Keterangan</th>
-                  <th className="border border-slate-300 p-2 text-right">Pemasukan (Rp)</th>
-                  <th className="border border-slate-300 p-2 text-right">Pengeluaran (Rp)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200">
-                {txDalamPeriode.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="border border-slate-300 p-4 text-center text-slate-400 italic">
-                      Tidak ada transaksi pada periode ini.
-                    </td>
-                  </tr>
-                ) : (
-                  txDalamPeriode.map((tx, idx) => (
-                    <tr key={tx.id}>
-                      <td className="border border-slate-300 p-2 text-center font-mono">{idx + 1}</td>
-                      <td className="border border-slate-300 p-2 font-mono">{tx.tanggal}</td>
-                      <td className="border border-slate-300 p-2 font-mono">{tx.noBukti || tx.id}</td>
-                      <td className="border border-slate-300 p-2">{tx.keterangan}</td>
-                      <td className="border border-slate-300 p-2 text-right font-mono">
-                        {tx.type === 'IN' ? formatRupiah(tx.nominal) : '-'}
-                      </td>
-                      <td className="border border-slate-300 p-2 text-right font-mono">
-                        {tx.type === 'OUT' ? formatRupiah(tx.nominal) : '-'}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-              <tfoot>
-                <tr className="bg-slate-50 font-bold text-slate-900">
-                  <td colSpan={4} className="border border-slate-300 p-2 text-right uppercase">Total Periode Ini:</td>
-                  <td className="border border-slate-300 p-2 text-right text-emerald-700">{formatRupiah(totalIn)}</td>
-                  <td className="border border-slate-300 p-2 text-right text-rose-700">{formatRupiah(totalOut)}</td>
-                </tr>
-                <tr className="bg-slate-100 font-bold text-slate-900">
-                  <td colSpan={4} className="border border-slate-300 p-2 text-right uppercase">Saldo Kas Akhir Periode:</td>
-                  <td colSpan={2} className="border border-slate-300 p-2 text-center text-blue-700 font-mono text-xs">
-                    {formatRupiah(finalBalance)}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
+            {isStudentReport ? (
+              <div>
+                <div className="mb-3 p-3 border border-blue-200 bg-blue-50/50 rounded-lg text-[11px]">
+                  <div className="font-bold text-blue-900">Rekap Infaq / Pembayaran Siswa</div>
+                  <div className="text-blue-800 mt-0.5">Periode: {reportMonth} · Kelas: {selectedKelas}</div>
+                </div>
+                <table className="w-full text-left border-collapse border border-slate-300 text-[11px] mb-8">
+                  <thead><tr className="bg-slate-100 text-slate-800 font-bold">
+                    <th className="border border-slate-300 p-2 text-center w-8">No</th><th className="border border-slate-300 p-2">Nama Siswa</th><th className="border border-slate-300 p-2">Kelas</th><th className="border border-slate-300 p-2">Jenis Pembayaran</th><th className="border border-slate-300 p-2 text-right">Target</th><th className="border border-slate-300 p-2 text-right">Terbayar Periode</th><th className="border border-slate-300 p-2 text-right">Sisa</th><th className="border border-slate-300 p-2 text-center">Status</th>
+                  </tr></thead>
+                  <tbody>{studentRows.length === 0 ? <tr><td colSpan={8} className="border border-slate-300 p-4 text-center text-slate-400 italic">Tidak ada data siswa pada filter yang dipilih.</td></tr> : studentRows.map((row, idx) => <tr key={row.siswa.id}>
+                    <td className="border border-slate-300 p-2 text-center">{idx + 1}</td><td className="border border-slate-300 p-2 font-semibold">{row.siswa.nama}</td><td className="border border-slate-300 p-2">{row.siswa.kelas}</td><td className="border border-slate-300 p-2">{row.siswa.jenis}</td><td className="border border-slate-300 p-2 text-right font-mono">{formatRupiah(row.siswa.target)}</td><td className="border border-slate-300 p-2 text-right font-mono">{formatRupiah(row.terbayar)}</td><td className="border border-slate-300 p-2 text-right font-mono">{formatRupiah(row.sisa)}</td><td className={`border border-slate-300 p-2 text-center font-bold ${row.sisa === 0 ? 'text-emerald-700' : 'text-amber-700'}`}>{row.sisa === 0 ? 'Lunas' : 'Belum Lunas'}</td>
+                  </tr>)}</tbody>
+                  <tfoot><tr className="bg-slate-50 font-bold"><td colSpan={5} className="border border-slate-300 p-2 text-right uppercase">Total Pembayaran Terfilter:</td><td className="border border-slate-300 p-2 text-right text-emerald-700">{formatRupiah(totalStudentPaid)}</td><td colSpan={2} className="border border-slate-300 p-2"></td></tr></tfoot>
+                </table>
+              </div>
+            ) : (
+              <table className="w-full text-left border-collapse border border-slate-300 text-[11px] mb-8">
+                <thead><tr className="bg-slate-100 text-slate-800 font-bold"><th className="border border-slate-300 p-2 text-center w-8">No</th><th className="border border-slate-300 p-2">Tanggal</th><th className="border border-slate-300 p-2">No. Bukti</th><th className="border border-slate-300 p-2">Keterangan</th><th className="border border-slate-300 p-2 text-right">Pemasukan (Rp)</th><th className="border border-slate-300 p-2 text-right">Pengeluaran (Rp)</th></tr></thead>
+                <tbody className="divide-y divide-slate-200">{txDalamPeriode.length === 0 ? <tr><td colSpan={6} className="border border-slate-300 p-4 text-center text-slate-400 italic">Tidak ada transaksi pada periode ini.</td></tr> : txDalamPeriode.map((tx, idx) => <tr key={tx.id}><td className="border border-slate-300 p-2 text-center font-mono">{idx + 1}</td><td className="border border-slate-300 p-2 font-mono">{tx.tanggal}</td><td className="border border-slate-300 p-2 font-mono">{tx.noBukti || tx.id}</td><td className="border border-slate-300 p-2">{tx.keterangan}</td><td className="border border-slate-300 p-2 text-right font-mono">{tx.type === 'IN' ? formatRupiah(tx.nominal) : '-'}</td><td className="border border-slate-300 p-2 text-right font-mono">{tx.type === 'OUT' ? formatRupiah(tx.nominal) : '-'}</td></tr>)}</tbody>
+                <tfoot><tr className="bg-slate-50 font-bold text-slate-900"><td colSpan={4} className="border border-slate-300 p-2 text-right uppercase">Total Periode Ini:</td><td className="border border-slate-300 p-2 text-right text-emerald-700">{formatRupiah(totalIn)}</td><td className="border border-slate-300 p-2 text-right text-rose-700">{formatRupiah(totalOut)}</td></tr><tr className="bg-slate-100 font-bold text-slate-900"><td colSpan={4} className="border border-slate-300 p-2 text-right uppercase">Saldo Kas Akhir Periode:</td><td colSpan={2} className="border border-slate-300 p-2 text-center text-blue-700 font-mono text-xs">{formatRupiah(finalBalance)}</td></tr></tfoot>
+              </table>
+            )}
           </div>
 
           {/* Formal Signature Block */}
