@@ -8,10 +8,10 @@ interface LaporanViewProps {
   currentLembaga: string;
   logoDataUrl: string | null;
   saldoAwal: number;
-  siswaTagihanList: SiswaTagihan[];
-  masterKelas: string[];
   formatRupiah: (val: number) => string;
   onLogoUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  masterKelas: string[];
+  siswaTagihanList: SiswaTagihan[];
 }
 
 export const LaporanView: React.FC<LaporanViewProps> = ({
@@ -20,15 +20,15 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
   currentLembaga,
   logoDataUrl,
   saldoAwal,
-  siswaTagihanList,
-  masterKelas,
   formatRupiah,
-  onLogoUpload
+  onLogoUpload,
+  masterKelas,
+  siswaTagihanList
 }) => {
   const [selectedReportType, setSelectedReportType] = useState('Buku Kas Umum (BKU)');
   const [customReportType, setCustomReportType] = useState('');
   const [reportMonth, setReportMonth] = useState('Agustus 2026');
-  const [selectedKelas, setSelectedKelas] = useState('ALL');
+  const [selectedKelas, setSelectedKelas] = useState('Semua Kelas');
 
   const reportType = selectedReportType === 'Lainnya' 
     ? (customReportType.trim() || 'Laporan Custom') 
@@ -43,6 +43,13 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
   };
 
   const periodPrefix = getMonthPrefix(reportMonth);
+  const isStudentPaymentReport = selectedReportType === 'Infaq / Pembayaran Siswa';
+
+  const getTransactionKelas = (tx: Pemasukan) => {
+    if (tx.siswaId) return siswaTagihanList.find(s => s.id === tx.siswaId)?.kelas || '';
+    if (tx.sumber === 'Infak') return masterKelas.includes(tx.sub) ? tx.sub : '';
+    return '';
+  };
 
   // All transactions sorted chronologically for BKU
   const allTxSorted = [
@@ -71,22 +78,18 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
 
   const finalBalance = saldoAwalPeriode + totalIn - totalOut;
 
-  // Rekap khusus Infaq / Pembayaran Siswa: satu sumber transaksi pemasukan,
-  // difilter berdasarkan periode laporan dan kelas dari Master Kelas & Rombel.
-  const siswaRekap = siswaTagihanList
-    .filter(s => selectedKelas === 'ALL' || s.kelas === selectedKelas)
-    .map(s => {
-      const pembayaranPeriode = pemasukanList
-        .filter(p => p.siswaId === s.id && (p.tanggal || '').slice(0, 7) === periodPrefix)
-        .reduce((sum, p) => sum + p.nominal, 0);
-      const totalTerbayar = pemasukanList
-        .filter(p => p.siswaId === s.id)
-        .reduce((sum, p) => sum + p.nominal, 0);
-      const sisa = Math.max(s.target - totalTerbayar, 0);
-      return { ...s, pembayaranPeriode, totalTerbayar, sisa, lunas: totalTerbayar >= s.target };
-    });
+  const laporanSiswaDalamPeriode = txDalamPeriode.filter(tx => {
+    if (tx.type !== 'IN' || !isStudentPaymentReport) return false;
+    const pemasukan = tx as Pemasukan;
+    const kelas = getTransactionKelas(pemasukan);
+    return selectedKelas === 'Semua Kelas' || kelas === selectedKelas;
+  });
 
-  const totalRekapSiswa = siswaRekap.reduce((sum, s) => sum + s.pembayaranPeriode, 0);
+  const displayedTransactions = isStudentPaymentReport ? laporanSiswaDalamPeriode : txDalamPeriode;
+  const displayedTotalIn = isStudentPaymentReport
+    ? laporanSiswaDalamPeriode.reduce((sum, tx) => sum + tx.nominal, 0)
+    : totalIn;
+  const displayedTotalOut = isStudentPaymentReport ? 0 : totalOut;
 
   // Export report to Excel / CSV format
   const handleExportExcel = () => {
@@ -98,7 +101,7 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
 
     csvContent += `No;Tanggal;No. Bukti;Tipe Transaksi;Kategori/Sumber;Pemasukan (Rp);Pengeluaran (Rp);Keterangan\n`;
 
-    txDalamPeriode.forEach((tx, index) => {
+    displayedTransactions.forEach((tx, index) => {
       const typeText = tx.type === 'IN' ? 'Pemasukan' : 'Pengeluaran';
       const category = tx.type === 'IN' ? `${tx.sumber} (${tx.sub})` : (tx as any).kategori || 'Umum';
       const masuk = tx.type === 'IN' ? tx.nominal : 0;
@@ -108,9 +111,9 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
       csvContent += `${index + 1};"${tx.tanggal}";"${tx.noBukti || tx.id}";"${typeText}";"${category}";${masuk};${keluar};"${cleanKet}"\n`;
     });
 
-    csvContent += `\n;TOTAL PEMASUKAN;;;;${totalIn};;\n`;
-    csvContent += `;TOTAL PENGELUARAN;;;;;${totalOut};\n`;
-    csvContent += `;SALDO AKHIR PERIODE;;;;;${finalBalance};\n`;
+    csvContent += `\n;TOTAL PEMASUKAN;;;;${displayedTotalIn};;\n`;
+    csvContent += `;TOTAL PENGELUARAN;;;;;${displayedTotalOut};\n`;
+    if (!isStudentPaymentReport) csvContent += `;SALDO AKHIR PERIODE;;;;;${finalBalance};\n`;
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -201,6 +204,17 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
           )}
         </div>
 
+        {isStudentPaymentReport && (
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1.5">Pilih Kelas</label>
+            <select value={selectedKelas} onChange={(e) => setSelectedKelas(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-[14px] px-3 py-2 text-xs font-medium text-slate-800 outline-none focus:border-blue-500">
+              <option value="Semua Kelas">Semua Kelas</option>
+              {masterKelas.map(kelas => <option key={kelas} value={kelas}>{kelas}</option>)}
+            </select>
+            {masterKelas.length === 0 && <p className="mt-1 text-[10px] text-amber-600">Belum ada kelas. Tambahkan melalui Pengaturan → Master Kelas & Rombel.</p>}
+          </div>
+        )}
+
         <div>
           <label className="block text-xs font-semibold text-slate-700 mb-1.5">Periode Bulan</label>
           <select 
@@ -213,20 +227,6 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
             <option value="Juni 2026">Juni 2026</option>
           </select>
         </div>
-
-        {selectedReportType === 'Infaq / Pembayaran Siswa' && (
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1.5">Pilih Kelas</label>
-            <select
-              value={selectedKelas}
-              onChange={(e) => setSelectedKelas(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-[14px] px-3 py-2 text-xs font-medium text-slate-800 outline-none focus:border-blue-500"
-            >
-              <option value="ALL">Semua Kelas</option>
-              {masterKelas.map(kelas => <option key={kelas} value={kelas}>{kelas}</option>)}
-            </select>
-          </div>
-        )}
 
         <div className="flex items-end">
           <button 
@@ -267,102 +267,45 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
               </h3>
               <p className="text-xs text-slate-600 mt-0.5">
                 Periode: <span className="font-semibold">{reportMonth}</span>
-                {selectedReportType === 'Infaq / Pembayaran Siswa' && (<> • Kelas: <span className="font-semibold">{selectedKelas === 'ALL' ? 'Semua Kelas' : selectedKelas}</span></>)}
+                {isStudentPaymentReport && <> <span className="mx-1">•</span> Kelas: <span className="font-semibold">{selectedKelas}</span></>}
               </p>
             </div>
 
             {/* Report Table Body */}
-            {selectedReportType === 'Infaq / Pembayaran Siswa' ? (
-              <div className="mb-8">
-                <table className="w-full text-left border-collapse border border-slate-300 text-[11px]">
-                  <thead>
-                    <tr className="bg-slate-100 text-slate-800 font-bold">
-                      <th className="border border-slate-300 p-2 text-center w-8">No</th>
-                      <th className="border border-slate-300 p-2">Nama Siswa</th>
-                      <th className="border border-slate-300 p-2">Kelas</th>
-                      <th className="border border-slate-300 p-2">Jenis/Tagihan</th>
-                      <th className="border border-slate-300 p-2 text-right">Target</th>
-                      <th className="border border-slate-300 p-2 text-right">Terbayar Periode</th>
-                      <th className="border border-slate-300 p-2 text-right">Sisa</th>
-                      <th className="border border-slate-300 p-2 text-center">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {siswaRekap.length === 0 ? (
-                      <tr><td colSpan={8} className="border border-slate-300 p-4 text-center text-slate-400 italic">Tidak ada data siswa pada filter ini.</td></tr>
-                    ) : siswaRekap.map((s, idx) => (
-                      <tr key={s.id}>
-                        <td className="border border-slate-300 p-2 text-center">{idx + 1}</td>
-                        <td className="border border-slate-300 p-2 font-semibold">{s.nama}</td>
-                        <td className="border border-slate-300 p-2">{s.kelas}</td>
-                        <td className="border border-slate-300 p-2">{s.jenis}</td>
-                        <td className="border border-slate-300 p-2 text-right">{formatRupiah(s.target)}</td>
-                        <td className="border border-slate-300 p-2 text-right font-semibold text-emerald-700">{formatRupiah(s.pembayaranPeriode)}</td>
-                        <td className="border border-slate-300 p-2 text-right">{formatRupiah(s.sisa)}</td>
-                        <td className="border border-slate-300 p-2 text-center">{s.lunas ? 'Lunas' : 'Belum Lunas'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr className="bg-slate-50 font-bold">
-                      <td colSpan={5} className="border border-slate-300 p-2 text-right uppercase">Total Pembayaran Periode:</td>
-                      <td className="border border-slate-300 p-2 text-right text-emerald-700">{formatRupiah(totalRekapSiswa)}</td>
-                      <td colSpan={2} className="border border-slate-300 p-2"></td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            ) : (
             <table className="w-full text-left border-collapse border border-slate-300 text-[11px] mb-8">
               <thead>
                 <tr className="bg-slate-100 text-slate-800 font-bold">
                   <th className="border border-slate-300 p-2 text-center w-8">No</th>
                   <th className="border border-slate-300 p-2">Tanggal</th>
                   <th className="border border-slate-300 p-2">No. Bukti</th>
-                  <th className="border border-slate-300 p-2">Keterangan</th>
-                  <th className="border border-slate-300 p-2 text-right">Pemasukan (Rp)</th>
-                  <th className="border border-slate-300 p-2 text-right">Pengeluaran (Rp)</th>
+                  {isStudentPaymentReport ? (<><th className="border border-slate-300 p-2">Siswa</th><th className="border border-slate-300 p-2">Jenis Pembayaran</th><th className="border border-slate-300 p-2 text-right">Nominal (Rp)</th></>) : (<><th className="border border-slate-300 p-2">Keterangan</th><th className="border border-slate-300 p-2 text-right">Pemasukan (Rp)</th><th className="border border-slate-300 p-2 text-right">Pengeluaran (Rp)</th></>)}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {txDalamPeriode.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="border border-slate-300 p-4 text-center text-slate-400 italic">
-                      Tidak ada transaksi pada periode ini.
-                    </td>
-                  </tr>
+                {displayedTransactions.length === 0 ? (
+                  <tr><td colSpan={6} className="border border-slate-300 p-4 text-center text-slate-400 italic">{isStudentPaymentReport ? `Tidak ada data Infaq / Pembayaran Siswa untuk ${selectedKelas} pada periode ini.` : 'Tidak ada transaksi pada periode ini.'}</td></tr>
                 ) : (
-                  txDalamPeriode.map((tx, idx) => (
-                    <tr key={tx.id}>
+                  displayedTransactions.map((tx, idx) => {
+                    const pemasukan = tx.type === 'IN' ? tx as Pemasukan : null;
+                    const siswa = pemasukan?.siswaId ? siswaTagihanList.find(s => s.id === pemasukan.siswaId) : null;
+                    return (<tr key={tx.id}>
                       <td className="border border-slate-300 p-2 text-center font-mono">{idx + 1}</td>
                       <td className="border border-slate-300 p-2 font-mono">{tx.tanggal}</td>
                       <td className="border border-slate-300 p-2 font-mono">{tx.noBukti || tx.id}</td>
-                      <td className="border border-slate-300 p-2">{tx.keterangan}</td>
-                      <td className="border border-slate-300 p-2 text-right font-mono">
-                        {tx.type === 'IN' ? formatRupiah(tx.nominal) : '-'}
-                      </td>
-                      <td className="border border-slate-300 p-2 text-right font-mono">
-                        {tx.type === 'OUT' ? formatRupiah(tx.nominal) : '-'}
-                      </td>
-                    </tr>
-                  ))
+                      {isStudentPaymentReport ? (<><td className="border border-slate-300 p-2">{siswa?.nama || '—'}</td><td className="border border-slate-300 p-2">{siswa?.jenis || pemasukan?.sub || 'Infaq'}</td><td className="border border-slate-300 p-2 text-right font-mono">{formatRupiah(tx.nominal)}</td></>) : (<><td className="border border-slate-300 p-2">{tx.keterangan}</td><td className="border border-slate-300 p-2 text-right font-mono">{tx.type === 'IN' ? formatRupiah(tx.nominal) : '-'}</td><td className="border border-slate-300 p-2 text-right font-mono">{tx.type === 'OUT' ? formatRupiah(tx.nominal) : '-'}</td></>)}
+                    </tr>);
+                  })
                 )}
               </tbody>
               <tfoot>
                 <tr className="bg-slate-50 font-bold text-slate-900">
-                  <td colSpan={4} className="border border-slate-300 p-2 text-right uppercase">Total Periode Ini:</td>
-                  <td className="border border-slate-300 p-2 text-right text-emerald-700">{formatRupiah(totalIn)}</td>
-                  <td className="border border-slate-300 p-2 text-right text-rose-700">{formatRupiah(totalOut)}</td>
+                  <td colSpan={isStudentPaymentReport ? 5 : 4} className="border border-slate-300 p-2 text-right uppercase">{isStudentPaymentReport ? 'Total Pembayaran:' : 'Total Periode Ini:'}</td>
+                  <td className="border border-slate-300 p-2 text-right text-emerald-700">{formatRupiah(displayedTotalIn)}</td>
+                  {!isStudentPaymentReport && <td className="border border-slate-300 p-2 text-right text-rose-700">{formatRupiah(displayedTotalOut)}</td>}
                 </tr>
-                <tr className="bg-slate-100 font-bold text-slate-900">
-                  <td colSpan={4} className="border border-slate-300 p-2 text-right uppercase">Saldo Kas Akhir Periode:</td>
-                  <td colSpan={2} className="border border-slate-300 p-2 text-center text-blue-700 font-mono text-xs">
-                    {formatRupiah(finalBalance)}
-                  </td>
-                </tr>
+                {!isStudentPaymentReport && (<tr className="bg-slate-100 font-bold text-slate-900"><td colSpan={4} className="border border-slate-300 p-2 text-right uppercase">Saldo Kas Akhir Periode:</td><td colSpan={2} className="border border-slate-300 p-2 text-center text-blue-700 font-mono text-xs">{formatRupiah(finalBalance)}</td></tr>)}
               </tfoot>
             </table>
-            )}
           </div>
 
           {/* Formal Signature Block */}

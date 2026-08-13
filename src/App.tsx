@@ -785,8 +785,6 @@ export default function App() {
               pengeluaranList={pengeluaranList}
               masterSumberDana={masterSumberDana}
               saldoAwal={saldoAwal}
-              siswaTagihanList={siswaTagihanList}
-              masterKelas={masterKelas}
               formatRupiah={formatRupiah}
               onSwitchTab={setActiveTab}
             />
@@ -846,6 +844,8 @@ export default function App() {
               saldoAwal={saldoAwal}
               formatRupiah={formatRupiah}
               onLogoUpload={handleLogoUpload}
+              masterKelas={masterKelas}
+              siswaTagihanList={siswaTagihanList}
             />
           )}
 
