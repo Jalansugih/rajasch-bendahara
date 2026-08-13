@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Pemasukan, Pengeluaran, SiswaTagihan, MasterSumberDana,
-  AuditLog, UserSession, KonfigurasiLembaga
+  AuditLog, UserSession, KonfigurasiLembaga, PeriodePembukuan
 } from './types';
 
 import {
@@ -38,6 +38,7 @@ import {
 } from './lib/siswa';
 
 import { fetchAuditLogsFromSupabase } from './lib/audit';
+import { fetchPeriodePembukuan, createPeriodePembukuan, tutupPeriodePembukuan } from './lib/periodePembukuan';
 
 import { Navbar } from './components/Navbar';
 import { Sidebar } from './components/Sidebar';
@@ -75,11 +76,14 @@ export default function App() {
   const [pengeluaranList, setPengeluaranList] = useState<Pengeluaran[]>([]);
   const [siswaTagihanList, setSiswaTagihanList] = useState<SiswaTagihan[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [periodePembukuanList, setPeriodePembukuanList] = useState<PeriodePembukuan[]>([]);
 
   // Auth & Supabase Status
   const [userSession, setUserSession] = useState<UserSession | null>(null);
   const [isConnectedToSupabase, setIsConnectedToSupabase] = useState<boolean>(false);
   const [authChecked, setAuthChecked] = useState<boolean>(false);
+
+  const periodeAktif = periodePembukuanList.find(p => p.status === 'AKTIF') || null;
 
   // Modals visibility
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
@@ -113,6 +117,113 @@ export default function App() {
       setKonfigurasi(prev => ({ ...prev, saldoAwal: nominal }));
       showToast(`[Demo Lokal] Kas Awal diisi: ${formatRupiah(nominal)} (tidak permanen)`);
     }
+  };
+
+  const handleBuatPeriodePembukuan = async (input: {
+    namaPeriode: string;
+    tanggalMulai: string;
+    tanggalAkhir: string;
+    saldoAwal: number;
+  }) => {
+    if (input.tanggalAkhir < input.tanggalMulai) {
+      showToast('Tanggal akhir periode tidak boleh sebelum tanggal mulai.');
+      return;
+    }
+
+    if (isConnectedToSupabase) {
+      const res = await createPeriodePembukuan(input);
+      if (!res.success) {
+        showToast(`Gagal membuat periode: ${res.message}`);
+        return;
+      }
+      const data = await fetchPeriodePembukuan();
+      setPeriodePembukuanList(data);
+      showToast(`Periode ${input.namaPeriode} berhasil dibuat dan menjadi periode aktif.`);
+      refreshAuditLogs();
+      return;
+    }
+
+    if (periodePembukuanList.some(p => p.status === 'AKTIF')) {
+      showToast('Masih ada periode aktif. Tutup periode tersebut terlebih dahulu.');
+      return;
+    }
+    const localPeriod: PeriodePembukuan = {
+      id: `PER-${Date.now()}`,
+      namaPeriode: input.namaPeriode,
+      tanggalMulai: input.tanggalMulai,
+      tanggalAkhir: input.tanggalAkhir,
+      saldoAwal: input.saldoAwal,
+      saldoAkhir: null,
+      status: 'AKTIF'
+    };
+    setPeriodePembukuanList(prev => [localPeriod, ...prev]);
+    showToast(`[Demo Lokal] Periode ${input.namaPeriode} dibuat.`);
+  };
+
+  const handleTutupPeriodePembukuan = async (id: string) => {
+    const periode = periodePembukuanList.find(p => p.id === id);
+    if (!periode) {
+      showToast('Periode pembukuan tidak ditemukan.');
+      return;
+    }
+
+    const masukPeriode = pemasukanList
+      .filter(x => x.tanggal >= periode.tanggalMulai && x.tanggal <= periode.tanggalAkhir)
+      .reduce((sum, x) => sum + x.nominal, 0);
+    const keluarPeriode = pengeluaranList
+      .filter(x => x.tanggal >= periode.tanggalMulai && x.tanggal <= periode.tanggalAkhir)
+      .reduce((sum, x) => sum + x.nominal, 0);
+    const saldoAkhir = periode.saldoAwal + masukPeriode - keluarPeriode;
+
+    if (saldoAkhir < 0) {
+      showToast('Saldo akhir periode negatif. Periksa transaksi sebelum menutup periode.');
+      return;
+    }
+
+    if (isConnectedToSupabase) {
+      const res = await tutupPeriodePembukuan(id, saldoAkhir);
+      if (!res.success) {
+        showToast(`Gagal menutup periode: ${res.message}`);
+        return;
+      }
+      const nextStart = new Date(`${periode.tanggalAkhir}T00:00:00`);
+      nextStart.setDate(nextStart.getDate() + 1);
+      const nextEnd = new Date(nextStart.getFullYear(), nextStart.getMonth() + 1, 0);
+      const iso = (d: Date) => d.toISOString().slice(0, 10);
+      const nextNama = nextStart.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+      const nextRes = await createPeriodePembukuan({
+        namaPeriode: nextNama,
+        tanggalMulai: iso(nextStart),
+        tanggalAkhir: iso(nextEnd),
+        saldoAwal: saldoAkhir
+      });
+      const data = await fetchPeriodePembukuan();
+      setPeriodePembukuanList(data);
+      showToast(nextRes.success
+        ? `Periode ${periode.namaPeriode} ditutup. ${nextNama} otomatis menjadi periode aktif dengan saldo awal ${formatRupiah(saldoAkhir)}.`
+        : `Periode ${periode.namaPeriode} ditutup, tetapi periode berikutnya belum dibuat: ${nextRes.message}`);
+      refreshAuditLogs();
+      return;
+    }
+
+    const nextStart = new Date(`${periode.tanggalAkhir}T00:00:00`);
+    nextStart.setDate(nextStart.getDate() + 1);
+    const nextEnd = new Date(nextStart.getFullYear(), nextStart.getMonth() + 1, 0);
+    const iso = (d: Date) => d.toISOString().slice(0, 10);
+    const nextNama = nextStart.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+    const nextPeriod: PeriodePembukuan = {
+      id: `PER-${Date.now() + 1}`,
+      namaPeriode: nextNama,
+      tanggalMulai: iso(nextStart),
+      tanggalAkhir: iso(nextEnd),
+      saldoAwal: saldoAkhir,
+      saldoAkhir: null,
+      status: 'AKTIF'
+    };
+    setPeriodePembukuanList(prev => [nextPeriod, ...prev.map(p =>
+      p.id === id ? { ...p, status: 'DITUTUP', saldoAkhir, closedAt: new Date().toISOString() } : p
+    )]);
+    showToast(`[Demo Lokal] ${periode.namaPeriode} ditutup. ${nextNama} menjadi periode aktif.`);
   };
 
   const handleResetAllData = () => {
@@ -171,7 +282,7 @@ export default function App() {
         setIsAuthModalOpen(true);
       }
 
-      const [config, kelas, sumber, kategori, inData, outData, stData, logs] = await Promise.all([
+      const [config, kelas, sumber, kategori, inData, outData, stData, logs, periodeData] = await Promise.all([
         fetchKonfigurasiLembaga(),
         fetchMasterKelas(),
         fetchMasterSumberDana(),
@@ -179,7 +290,8 @@ export default function App() {
         fetchPemasukanFromSupabase(),
         fetchPengeluaranFromSupabase(),
         fetchSiswaTagihan(),
-        fetchAuditLogsFromSupabase()
+        fetchAuditLogsFromSupabase(),
+        fetchPeriodePembukuan()
       ]);
 
       if (config) setKonfigurasi(config);
@@ -190,6 +302,7 @@ export default function App() {
       setPengeluaranList(outData ?? []);
       setSiswaTagihanList(stData ?? []);
       setAuditLogs(logs ?? []);
+      setPeriodePembukuanList(periodeData ?? []);
     } else {
       // Mode Demo Lokal: tidak ada Supabase terhubung -> data initial hanya
       // dipakai DI SINI, khusus untuk demo (poin 4 panduan), tidak pernah
@@ -209,6 +322,7 @@ export default function App() {
       setPengeluaranList(INITIAL_PENGELUARAN);
       setSiswaTagihanList(INITIAL_SISWA_TAGIHAN);
       setAuditLogs(INITIAL_AUDIT_LOGS);
+      setPeriodePembukuanList([]);
     }
     setAuthChecked(true);
   };
@@ -844,8 +958,6 @@ export default function App() {
               saldoAwal={saldoAwal}
               formatRupiah={formatRupiah}
               onLogoUpload={handleLogoUpload}
-              masterKelas={masterKelas}
-              siswaTagihanList={siswaTagihanList}
             />
           )}
 
@@ -871,6 +983,10 @@ export default function App() {
               onRemoveMasterKategori={handleRemoveMasterKategori}
               onRefreshAuditLogs={refreshAuditLogs}
               onUpdateSaldoAwal={handleUpdateSaldoAwal}
+              periodePembukuanList={periodePembukuanList}
+              periodeAktif={periodeAktif}
+              onBuatPeriodePembukuan={handleBuatPeriodePembukuan}
+              onTutupPeriodePembukuan={handleTutupPeriodePembukuan}
               onResetAllData={handleResetAllData}
               showToast={showToast}
             />

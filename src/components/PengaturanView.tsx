@@ -3,7 +3,7 @@ import {
   Building, Users, Vault, Tags, Wand2, ShieldAlert, 
   RefreshCw, Trash2, Plus, Eye, Wallet, Save, RotateCcw
 } from 'lucide-react';
-import { MasterSumberDana, AuditLog } from '../types';
+import { MasterSumberDana, AuditLog, PeriodePembukuan } from '../types';
 
 interface PengaturanViewProps {
   currentLembaga: string;
@@ -27,6 +27,10 @@ interface PengaturanViewProps {
   onRefreshAuditLogs: () => void;
   onUpdateSaldoAwal: (nominal: number) => void;
   onResetAllData: () => void;
+  periodePembukuanList: PeriodePembukuan[];
+  periodeAktif: PeriodePembukuan | null;
+  onBuatPeriodePembukuan: (input: { namaPeriode: string; tanggalMulai: string; tanggalAkhir: string; saldoAwal: number }) => void;
+  onTutupPeriodePembukuan: (id: string) => void;
   showToast: (msg: string) => void;
 }
 
@@ -52,6 +56,10 @@ export const PengaturanView: React.FC<PengaturanViewProps> = ({
   onRefreshAuditLogs,
   onUpdateSaldoAwal,
   onResetAllData,
+  periodePembukuanList,
+  periodeAktif,
+  onBuatPeriodePembukuan,
+  onTutupPeriodePembukuan,
   showToast
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'master' | 'audit'>('master');
@@ -61,6 +69,10 @@ export const PengaturanView: React.FC<PengaturanViewProps> = ({
   const [jenisLembagaInput, setJenisLembagaInput] = useState<string>(jenisLembaga);
   const [isWizardModalOpen, setIsWizardModalOpen] = useState<boolean>(false);
   const [wizardStep, setWizardStep] = useState<number>(1);
+  const [namaPeriodeInput, setNamaPeriodeInput] = useState('');
+  const [tanggalMulaiInput, setTanggalMulaiInput] = useState('');
+  const [tanggalAkhirInput, setTanggalAkhirInput] = useState('');
+  const [saldoAwalPeriodeInput, setSaldoAwalPeriodeInput] = useState('');
 
   const handleSaveProfil = () => {
     if (!namaLembagaInput.trim()) {
@@ -219,6 +231,91 @@ export const PengaturanView: React.FC<PengaturanViewProps> = ({
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* PERIODE PEMBUKUAN: tahap fondasi, belum mengubah renderer laporan lama */}
+          <div className="pt-2">
+            <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <Wallet className="w-4 h-4 text-blue-600" /> Periode Pembukuan
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Menentukan cut-off pembukuan kas. Tidak menghapus transaksi dan tidak mengubah format laporan lama.
+                </p>
+              </div>
+              {periodeAktif && (
+                <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
+                  ● {periodeAktif.namaPeriode} Aktif
+                </span>
+              )}
+            </div>
+
+            {!periodeAktif ? (
+              <div className="p-4 bg-blue-50/70 border border-blue-200 rounded-[14px] space-y-4">
+                <div className="text-xs text-blue-900 font-semibold">Buat periode pembukuan pertama</div>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">Nama Periode</label>
+                    <input value={namaPeriodeInput} onChange={e => setNamaPeriodeInput(e.target.value)} placeholder="Agustus 2026" className="w-full bg-white border border-slate-200 rounded-[12px] px-3 py-2 text-xs outline-none focus:border-blue-500" />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">Tanggal Mulai</label>
+                    <input type="date" value={tanggalMulaiInput} onChange={e => setTanggalMulaiInput(e.target.value)} className="w-full bg-white border border-slate-200 rounded-[12px] px-3 py-2 text-xs outline-none focus:border-blue-500" />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">Tanggal Akhir</label>
+                    <input type="date" value={tanggalAkhirInput} onChange={e => setTanggalAkhirInput(e.target.value)} className="w-full bg-white border border-slate-200 rounded-[12px] px-3 py-2 text-xs outline-none focus:border-blue-500" />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">Saldo Awal Periode</label>
+                    <input type="number" min="0" value={saldoAwalPeriodeInput} onChange={e => setSaldoAwalPeriodeInput(e.target.value)} placeholder="0" className="w-full bg-white border border-slate-200 rounded-[12px] px-3 py-2 text-xs outline-none focus:border-blue-500" />
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const saldo = Number(saldoAwalPeriodeInput);
+                    if (!namaPeriodeInput.trim() || !tanggalMulaiInput || !tanggalAkhirInput) return showToast('Nama dan tanggal periode wajib diisi.');
+                    if (!Number.isFinite(saldo) || saldo < 0) return showToast('Saldo awal periode tidak valid.');
+                    onBuatPeriodePembukuan({ namaPeriode: namaPeriodeInput.trim(), tanggalMulai: tanggalMulaiInput, tanggalAkhir: tanggalAkhirInput, saldoAwal: saldo });
+                  }}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-[12px] text-xs font-semibold shadow-sm"
+                >Buat Periode Aktif</button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-[12px]"><div className="text-[10px] text-slate-500">Periode Aktif</div><div className="text-xs font-bold text-slate-900 mt-1">{periodeAktif.namaPeriode}</div></div>
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-[12px]"><div className="text-[10px] text-slate-500">Tanggal</div><div className="text-xs font-bold text-slate-900 mt-1">{periodeAktif.tanggalMulai} s/d {periodeAktif.tanggalAkhir}</div></div>
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-[12px]"><div className="text-[10px] text-slate-500">Saldo Awal</div><div className="text-xs font-bold text-slate-900 mt-1">Rp {periodeAktif.saldoAwal.toLocaleString('id-ID')}</div></div>
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-[12px]"><div className="text-[10px] text-emerald-700">Status</div><div className="text-xs font-bold text-emerald-800 mt-1">● Aktif</div></div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const yakin = confirm(`Tutup periode ${periodeAktif.namaPeriode}? Transaksi tetap tersimpan, tetapi periode akan menjadi arsip/closed.`);
+                    if (!yakin) return;
+                    onTutupPeriodePembukuan(periodeAktif.id);
+                  }}
+                  className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-[12px] text-xs font-semibold shadow-sm"
+                >Tutup Periode</button>
+              </div>
+            )}
+
+            {periodePembukuanList.length > 0 && (
+              <div className="mt-5 border border-slate-200 rounded-[14px] overflow-hidden">
+                <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-800">Riwayat Periode Pembukuan</div>
+                <div className="divide-y divide-slate-100">
+                  {periodePembukuanList.map(p => (
+                    <div key={p.id} className="px-4 py-3 flex items-center justify-between gap-4">
+                      <div><div className="text-xs font-semibold text-slate-900">{p.namaPeriode}</div><div className="text-[10px] text-slate-500">{p.tanggalMulai} s/d {p.tanggalAkhir}</div></div>
+                      <div className="text-right"><div className={`text-[10px] font-bold ${p.status === 'AKTIF' ? 'text-emerald-700' : 'text-slate-500'}`}>{p.status === 'AKTIF' ? '● AKTIF' : '🔒 DITUTUP'}</div><div className="text-[10px] text-slate-500">Saldo awal Rp {p.saldoAwal.toLocaleString('id-ID')}{p.saldoAkhir != null ? ` · akhir Rp ${p.saldoAkhir.toLocaleString('id-ID')}` : ''}</div></div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Saldo Kas Awal & Reset Data Dashboard */}
