@@ -218,8 +218,8 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
               </label>
               <div className="flex-1 text-center">
                 <h2 className="text-base font-bold uppercase tracking-wide text-slate-900">{currentLembaga}</h2>
-                <p className="text-[11px] text-slate-600">Jl. Education Raya No. 45, Kecamatan Sukamaju, Kota Pendidikan</p>
-                <p className="text-[10px] text-slate-500 font-mono mt-0.5">Email: bendahara@sdn1merdeka.sch.id | NPSN: 10293847</p>
+                <p className="text-[11px] text-slate-600">Kp. Selajambe Rt/Rw : 04/05 Desa Hegarmanah, Kec. Sukaluyu, Cianjur 43284 Telp. 0263-2324180</p>
+                <p className="text-[10px] text-slate-500 font-mono mt-0.5">Email: Rzkmulyana55@gmail.com | NPSN: 20252330</p>
               </div>
             </div>
 
@@ -291,18 +291,18 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
               <div>
                 <p className="text-slate-600">Mengetahui,</p>
                 <p className="font-bold text-slate-900 mb-16">Kepala Sekolah {currentLembaga}</p>
-                <p className="font-bold text-slate-900 underline">Nama Kepala Sekolah</p>
-                <p className="text-[10px] text-slate-500">NIP. 19680412 199303 1 002</p>
+                <p className="font-bold text-slate-900 underline">H Fahru Rozi Ramdhan S.S., M.Pd</p>
+                <p className="text-[10px] text-slate-500">NIP. .....................</p>
               </div>
               <div>
-                <p className="text-slate-600">Kota Pendidikan, {reportMonth}</p>
+                <p className="text-slate-600">Cianjur, {reportMonth}</p>
                 <p className="font-bold text-slate-900 mb-16">Bendahara Sekolah</p>
-                <p className="font-bold text-slate-900 underline">M. Rizki Mulyana, S.Pd</p>
-                <p className="text-[10px] text-slate-500">NIP. 19750820 200501 2 004</p>
+                <p className="font-bold text-slate-900 underline">Rizki Mulyana, S.Pd</p>
+                <p className="text-[10px] text-slate-500">NIP. ......................</p>
               </div>
             </div>
             <div className="mt-8 text-[9px] text-slate-400 text-center border-t border-slate-100 pt-2 font-mono">
-              Dokumen ini dicetak secara otomatis dari RajaKas.id Modul Bendahara • Terintegrasi Database & Audit Log
+              Dokumen ini dicetak secara otomatis dari Portal Bendahara SMP Tungturunan • Yang Terintegrasi
             </div>
           </div>
         </div>
