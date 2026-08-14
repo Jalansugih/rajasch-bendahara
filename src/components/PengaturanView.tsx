@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Building, Users, Vault, Tags, Wand2, ShieldAlert, 
   RefreshCw, Trash2, Plus, Eye, Wallet, Save, RotateCcw
 } from 'lucide-react';
-import { MasterSumberDana, AuditLog } from '../types';
+import { MasterSumberDana, AuditLog, PeriodePembukuan } from '../types';
 
 interface PengaturanViewProps {
   currentLembaga: string;
@@ -25,8 +25,14 @@ interface PengaturanViewProps {
   onAddMasterKategori: () => void;
   onRemoveMasterKategori: (k: string) => void;
   onRefreshAuditLogs: () => void;
+  tahunAjaranAktif: string;
+  periodeAktif: PeriodePembukuan | null;
+  periodeTerakhirDitutup: PeriodePembukuan | null;
+  saldoAkhirPeriode: number | null;
   onUpdateSaldoAwal: (nominal: number) => void;
-  onResetAllData: () => void;
+  onSaveTahunAjaran: (tahun: string) => void;
+  onTutupBuku: () => void;
+  onBukaKembaliBuku: () => void;
   showToast: (msg: string) => void;
 }
 
@@ -50,17 +56,29 @@ export const PengaturanView: React.FC<PengaturanViewProps> = ({
   onAddMasterKategori,
   onRemoveMasterKategori,
   onRefreshAuditLogs,
+  tahunAjaranAktif,
+  periodeAktif,
+  periodeTerakhirDitutup,
+  saldoAkhirPeriode,
   onUpdateSaldoAwal,
-  onResetAllData,
+  onSaveTahunAjaran,
+  onTutupBuku,
+  onBukaKembaliBuku,
   showToast
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'master' | 'audit'>('master');
   const [selectedAuditLog, setSelectedAuditLog] = useState<AuditLog | null>(null);
   const [inputKasAwal, setInputKasAwal] = useState<string>(saldoAwal.toString());
+  const [tahunAjaranInput, setTahunAjaranInput] = useState<string>(tahunAjaranAktif || '2025/2026');
+  const [isCutOffModalOpen, setIsCutOffModalOpen] = useState<boolean>(false);
   const [namaLembagaInput, setNamaLembagaInput] = useState<string>(currentLembaga);
   const [jenisLembagaInput, setJenisLembagaInput] = useState<string>(jenisLembaga);
   const [isWizardModalOpen, setIsWizardModalOpen] = useState<boolean>(false);
   const [wizardStep, setWizardStep] = useState<number>(1);
+
+  useEffect(() => {
+    setTahunAjaranInput(tahunAjaranAktif || '2025/2026');
+  }, [tahunAjaranAktif]);
 
   const handleSaveProfil = () => {
     if (!namaLembagaInput.trim()) {
@@ -78,6 +96,15 @@ export const PengaturanView: React.FC<PengaturanViewProps> = ({
       return;
     }
     onUpdateSaldoAwal(val);
+  };
+
+  const handleSaveTahunAjaran = () => {
+    const value = tahunAjaranInput.trim();
+    if (!/^\d{4}\/\d{4}$/.test(value)) {
+      showToast('Format Tahun Ajaran harus seperti 2025/2026');
+      return;
+    }
+    onSaveTahunAjaran(value);
   };
 
   return (
@@ -180,12 +207,22 @@ export const PengaturanView: React.FC<PengaturanViewProps> = ({
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Tahun Ajaran Aktif</label>
-                <input 
-                  type="text" 
-                  value="2025/2026" 
-                  readOnly 
-                  className="w-full bg-slate-50 border border-slate-200 rounded-[14px] px-3 py-2 text-xs font-medium text-slate-800 outline-none"
-                />
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={tahunAjaranInput}
+                    onChange={(e) => setTahunAjaranInput(e.target.value)}
+                    placeholder="2025/2026"
+                    className="min-w-0 flex-1 bg-white border border-slate-200 rounded-[14px] px-3 py-2 text-xs font-medium text-slate-800 outline-none focus:border-blue-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSaveTahunAjaran}
+                    className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-[14px] text-[11px] font-semibold"
+                  >
+                    Simpan
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -221,10 +258,10 @@ export const PengaturanView: React.FC<PengaturanViewProps> = ({
             </div>
           </div>
 
-          {/* Saldo Kas Awal & Reset Data Dashboard */}
+          {/* Saldo Kas Awal & Tutup Buku */}
           <div className="pt-2">
             <h3 className="text-sm font-bold text-slate-900 mb-4 pb-2 border-b border-slate-100 flex items-center gap-2">
-              <Wallet className="w-4 h-4 text-emerald-600" /> Saldo Kas Awal & Reset Data
+              <Wallet className="w-4 h-4 text-emerald-600" /> Saldo Kas Awal & Tutup Buku
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Box Pengisian Kas Awal */}
@@ -258,24 +295,37 @@ export const PengaturanView: React.FC<PengaturanViewProps> = ({
                 </div>
               </div>
 
-              {/* Box Reset Data Transaksi & Dashboard */}
-              <div className="p-4 bg-rose-50/70 border border-rose-200/80 rounded-[14px] space-y-3 flex flex-col justify-between">
+              {/* Box Tutup Buku / Cut-Off */}
+              <div className="p-4 bg-amber-50/70 border border-amber-200/80 rounded-[14px] space-y-3 flex flex-col justify-between">
                 <div>
-                  <h4 className="text-xs font-bold text-rose-900 flex items-center gap-1.5">
-                    <RotateCcw className="w-3.5 h-3.5 text-rose-600" /> Reset Data & Kosongkan Dashboard
+                  <h4 className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
+                    <RotateCcw className="w-3.5 h-3.5 text-amber-600" /> Tutup Buku (Cut-Off)
                   </h4>
-                  <p className="text-[11px] text-rose-700 mt-0.5">
-                    Mengosongkan/menghapus seluruh data pemasukan, pengeluaran, dan tagihan agar angka di Dashboard kembali ke angka 0.
+                  <p className="text-[11px] text-amber-700 mt-0.5">
+                    Mengunci periode lama tanpa menghapus transaksi. Saldo akhir dihitung otomatis dari database dan menjadi saldo awal periode berikutnya.
                   </p>
+                  <div className="mt-2 text-[11px] text-slate-600 space-y-0.5">
+                    <div>Periode aktif: <strong>{periodeAktif?.tahunAjaran || tahunAjaranAktif}</strong></div>
+                    <div>Saldo akhir saat ini: <strong>{saldoAkhirPeriode == null ? 'Menghitung...' : `Rp ${Math.round(saldoAkhirPeriode).toLocaleString('id-ID')}`}</strong></div>
+                  </div>
                 </div>
-                <div>
+                <div className="flex gap-2">
                   <button
-                    onClick={onResetAllData}
-                    className="w-full py-2 px-4 bg-rose-600 hover:bg-rose-700 text-white rounded-[12px] text-xs font-semibold transition-all flex items-center justify-center gap-1.5 shadow-sm"
+                    onClick={() => setIsCutOffModalOpen(true)}
+                    disabled={!periodeAktif || periodeAktif.status !== 'AKTIF'}
+                    className="flex-1 py-2 px-4 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-[12px] text-xs font-semibold transition-all flex items-center justify-center gap-1.5 shadow-sm"
                   >
                     <RotateCcw className="w-3.5 h-3.5" />
-                    <span>Reset Semua Angka & Data Transaksi</span>
+                    <span>Tutup Buku</span>
                   </button>
+                  {periodeTerakhirDitutup && (
+                    <button
+                      onClick={onBukaKembaliBuku}
+                      className="px-3 py-2 bg-white border border-amber-300 text-amber-800 rounded-[12px] text-[11px] font-semibold"
+                    >
+                      Buka Kembali
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -358,6 +408,33 @@ export const PengaturanView: React.FC<PengaturanViewProps> = ({
                   <button onClick={() => onRemoveMasterKategori(k)} className="text-rose-400 hover:text-rose-800">×</button>
                 </span>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isCutOffModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-[14px] max-w-md w-full shadow-xl border border-slate-200 p-6 space-y-4">
+            <div>
+              <h3 className="font-bold text-slate-900 text-sm">Konfirmasi Tutup Buku (Cut-Off)</h3>
+              <p className="text-[11px] text-slate-500 mt-1">
+                Tidak ada transaksi yang dihapus. Periode ditutup, saldo akhir dihitung langsung oleh database, lalu dipakai sebagai saldo awal periode berikutnya.
+              </p>
+            </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-[12px] p-3 text-xs space-y-1">
+              <div>Periode: <strong>{periodeAktif?.tahunAjaran}</strong></div>
+              <div>Saldo akhir dari database: <strong>{saldoAkhirPeriode == null ? 'Menghitung...' : `Rp ${Math.round(saldoAkhirPeriode).toLocaleString('id-ID')}`}</strong></div>
+              <div>Periode berikutnya: <strong>{tahunAjaranInput}</strong></div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button onClick={() => setIsCutOffModalOpen(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-[12px] text-xs font-semibold">Batal</button>
+              <button
+                onClick={() => { setIsCutOffModalOpen(false); onTutupBuku(); }}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-[12px] text-xs font-semibold"
+              >
+                Ya, Tutup Buku
+              </button>
             </div>
           </div>
         </div>
