@@ -113,7 +113,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <div className="absolute -right-10 -bottom-10 w-48 h-48 bg-white/10 rounded-full blur-2xl pointer-events-none" />
         <div className="space-y-1 z-10">
           <h1 className="text-2xl font-bold tracking-tight">Selamat Datang, Bendahara!</h1>
-          <p class="text-blue-100 text-xs max-w-xl">
+          <p className="text-blue-100 text-xs max-w-xl">
             Kelola keuangan sekolah tanpa kerumitan debit-kredit. Cukup catat transaksi hari ini, sistem otomatis menyusun Laporan Kas & Rekapitulasi secara real-time.
           </p>
         </div>
