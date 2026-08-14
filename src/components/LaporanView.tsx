@@ -29,6 +29,7 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
   const [customReportType, setCustomReportType] = useState('');
   const [reportMonth, setReportMonth] = useState('Agustus 2026');
   const [selectedKelas, setSelectedKelas] = useState('Semua Kelas');
+  const printDate = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
 
   const reportType = selectedReportType === 'Lainnya' 
     ? (customReportType.trim() || 'Laporan Custom') 
@@ -318,7 +319,7 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
                 <p className="text-[10px] text-slate-500">NIP. .........................................</p>
               </div>
               <div>
-                <p className="text-slate-600">Cianjur, {reportMonth}</p>
+                <p className="text-slate-600">Cianjur, {printDate}</p>
                 <p className="font-bold text-slate-900 mb-16">Bendahara Sekolah</p>
                 <p className="font-bold text-slate-900 underline">Rizki Mulyana, S.Pd</p>
                 <p className="text-[10px] text-slate-500">NIP. .........................................</p>
