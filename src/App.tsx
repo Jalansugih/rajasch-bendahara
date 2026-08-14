@@ -39,12 +39,8 @@ import {
 
 import { fetchAuditLogsFromSupabase } from './lib/audit';
 import {
-  fetchPeriodePembukuan,
-  ensurePeriodeAktif,
-  hitungSaldoAkhirPeriode,
-  tutupBuku,
-  bukaKembaliBuku,
-  updateTahunAjaranPeriodeAktif
+  fetchPeriodePembukuan, getActivePeriode, closePeriodePembukuan,
+  updateSaldoAwalPeriode, updateTahunAjaranAktif, updatePeriodeAktifSettings, defaultTanggalMulaiTahunAjaran, defaultTanggalAkhirTahunAjaran
 } from './lib/periodePembukuan';
 
 import { Navbar } from './components/Navbar';
@@ -83,8 +79,7 @@ export default function App() {
   const [pengeluaranList, setPengeluaranList] = useState<Pengeluaran[]>([]);
   const [siswaTagihanList, setSiswaTagihanList] = useState<SiswaTagihan[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
-  const [periodeList, setPeriodeList] = useState<PeriodePembukuan[]>([]);
-  const [saldoAkhirPeriode, setSaldoAkhirPeriode] = useState<number | null>(null);
+  const [periodePembukuanList, setPeriodePembukuanList] = useState<PeriodePembukuan[]>([]);
 
   // Auth & Supabase Status
   const [userSession, setUserSession] = useState<UserSession | null>(null);
@@ -110,6 +105,16 @@ export default function App() {
   };
 
   const handleUpdateSaldoAwal = async (nominal: number) => {
+    const active = getActivePeriode(periodePembukuanList);
+    if (active) {
+      const res = await updateSaldoAwalPeriode(active.id, nominal);
+      if (!res.success) {
+        showToast(`Gagal menyimpan Kas Awal: ${res.message}`);
+        return;
+      }
+      setPeriodePembukuanList(prev => prev.map(x => x.id === active.id ? { ...x, saldoAwal: nominal } : x));
+    }
+
     if (isConnectedToSupabase) {
       const res = await saveSaldoAwal(nominal);
       if (!res.success) {
@@ -119,112 +124,135 @@ export default function App() {
       setKonfigurasi(prev => ({ ...prev, saldoAwal: nominal }));
       showToast(`Kas Awal berhasil disimpan ke database: ${formatRupiah(nominal)}`);
     } else {
-      // Mode Demo Lokal: tidak ada tempat permanen untuk menyimpan ini.
       setKonfigurasi(prev => ({ ...prev, saldoAwal: nominal }));
       showToast(`[Demo Lokal] Kas Awal diisi: ${formatRupiah(nominal)} (tidak permanen)`);
     }
   };
 
-  const handleSaveTahunAjaran = async (tahun: string) => {
+  const handleSavePeriodeSettings = async (tahun: string, tanggalMulai: string, nominal: number) => {
+    const normalized = tahun.trim();
+    if (!/^\d{4}\/\d{4}$/.test(normalized)) {
+      showToast('Format Tahun Ajaran harus YYYY/YYYY, contoh 2025/2026');
+      return;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(tanggalMulai)) {
+      showToast('Tanggal Mulai Periode tidak valid.');
+      return;
+    }
+    if (Number.isNaN(nominal) || nominal < 0) {
+      showToast('Nominal Saldo Awal tidak valid');
+      return;
+    }
+
+    // Jangan bergantung pada ID periode yang tersimpan di React state.
+    // Fungsi penyimpanan akan mencari periode AKTIF langsung di database bila
+    // state belum memuat ID yang benar.
+    const active = getActivePeriode(periodePembukuanList);
+    const res = await updatePeriodeAktifSettings(
+      active?.id ?? null,
+      normalized,
+      tanggalMulai,
+      nominal
+    );
+    if (!res.success) {
+      showToast(`Gagal menyimpan pengaturan periode: ${res.message}`);
+      return;
+    }
+
     if (isConnectedToSupabase) {
-      const res = await saveKonfigurasiLembaga({ tahunAjaranAktif: tahun });
+      // Tahun Ajaran sekarang bersumber dari periode_pembukuan.
+      // Jangan menulis tahun_ajaran ke konfigurasi_lembaga karena kolom tersebut
+      // memang tidak ada pada schema database RajaKas saat ini.
+      const saldoRes = await saveSaldoAwal(nominal);
+      if (!saldoRes.success) {
+        showToast(`Periode tersimpan, tetapi Saldo Awal gagal disimpan: ${saldoRes.message}`);
+        return;
+      }
+    }
+
+    // Muat ulang dari database agar UI menggunakan nilai yang benar-benar tersimpan.
+    const refreshedPeriods = await fetchPeriodePembukuan();
+    setPeriodePembukuanList(refreshedPeriods);
+
+    const refreshedActive = getActivePeriode(refreshedPeriods);
+    setKonfigurasi(prev => ({
+      ...prev,
+      tahunAjaran: normalized,
+      saldoAwal: nominal
+    }));
+
+    if (!refreshedActive) {
+      showToast('Periode tersimpan, tetapi periode aktif belum dapat dimuat ulang.');
+      return;
+    }
+
+    showToast(`Pengaturan periode berhasil disimpan: ${normalized} • mulai ${tanggalMulai}`);
+  };
+
+  const handleUpdateTahunAjaran = async (tahun: string) => {
+    const normalized = tahun.trim();
+    if (!/^\d{4}\/\d{4}$/.test(normalized)) {
+      showToast('Format Tahun Ajaran harus YYYY/YYYY, contoh 2025/2026');
+      return;
+    }
+
+    if (isConnectedToSupabase) {
+      const res = await saveKonfigurasiLembaga({ tahunAjaran: normalized });
       if (!res.success) {
         showToast(`Gagal menyimpan Tahun Ajaran: ${res.message}`);
         return;
       }
     }
-    const periodRes = await updateTahunAjaranPeriodeAktif(tahun);
+
+    const periodRes = await updateTahunAjaranAktif(normalized);
     if (!periodRes.success) {
       showToast(`Tahun Ajaran tersimpan di profil, tetapi periode aktif gagal diperbarui: ${periodRes.message}`);
       return;
     }
-    setKonfigurasi(prev => ({ ...prev, tahunAjaranAktif: tahun }));
-    await refreshPeriode();
-    showToast(`Tahun Ajaran Aktif disimpan: ${tahun}`);
-  };
 
-  const nextAcademicYear = (value: string) => {
-    const m = value.match(/^(\d{4})\/(\d{4})$/);
-    if (!m) return value;
-    return `${Number(m[1]) + 1}/${Number(m[2]) + 1}`;
-  };
-
-  const refreshPeriode = async () => {
-    const periods = await fetchPeriodePembukuan();
-    if (periods.length) {
-      setPeriodeList(periods);
-      const active = periods.find(p => p.status === 'AKTIF') || null;
-      if (active) {
-        const calc = await hitungSaldoAkhirPeriode(active.id);
-        if (calc.success) setSaldoAkhirPeriode(calc.saldoAkhir ?? null);
-      } else {
-        setSaldoAkhirPeriode(null);
-      }
-      return periods;
-    }
-    return [];
+    setKonfigurasi(prev => ({ ...prev, tahunAjaran: normalized }));
+    setPeriodePembukuanList(prev => prev.map(x => x.status === 'AKTIF' ? { ...x, tahunAjaran: normalized, namaPeriode: normalized } : x));
+    showToast(`Tahun Ajaran Aktif disimpan: ${normalized}`);
   };
 
   const handleTutupBuku = async () => {
-    const active = periodeList.find(p => p.status === 'AKTIF');
+    const active = getActivePeriode(periodePembukuanList);
     if (!active) {
-      showToast('Belum ada periode buku aktif.');
+      showToast('Tidak ada periode aktif untuk ditutup.');
       return;
     }
 
-    const tahunBerikutnya = nextAcademicYear(active.tahunAjaran || konfigurasi.tahunAjaranAktif || '2025/2026');
-    const localSaldoAkhir = active.saldoAwal
-      + pemasukanList.filter(x => x.tanggal >= active.tanggalMulai).reduce((sum, x) => sum + x.nominal, 0)
-      - pengeluaranList.filter(x => x.tanggal >= active.tanggalMulai).reduce((sum, x) => sum + x.nominal, 0);
-    const res = await tutupBuku(active.id, tahunBerikutnya, localSaldoAkhir);
+    const tanggalCutoff = prompt(
+      `Masukkan tanggal cut-off untuk periode ${active.namaPeriode}. Format YYYY-MM-DD.`,
+      defaultTanggalAkhirTahunAjaran(active.tahunAjaran)
+    );
+    if (!tanggalCutoff) return;
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(tanggalCutoff) || tanggalCutoff < active.tanggalMulai) {
+      showToast('Tanggal cut-off tidak valid atau sebelum tanggal mulai periode.');
+      return;
+    }
+
+    if (!confirm(`Tutup Buku ${active.namaPeriode} sampai ${tanggalCutoff}? Transaksi tidak akan dihapus.`)) return;
+
+    const res = await closePeriodePembukuan(active.id, tanggalCutoff);
     if (!res.success) {
-      showToast(`Gagal Tutup Buku: ${res.message}`);
+      showToast(`Tutup Buku gagal: ${res.message}`);
       return;
     }
 
-    if (isConnectedToSupabase) {
-      await saveKonfigurasiLembaga({ tahunAjaranAktif: tahunBerikutnya });
+    const periods = await fetchPeriodePembukuan();
+    setPeriodePembukuanList(periods);
+    const next = getActivePeriode(periods);
+    if (next) {
+      setKonfigurasi(prev => ({ ...prev, saldoAwal: next.saldoAwal, tahunAjaran: next.tahunAjaran }));
     }
-    setKonfigurasi(prev => ({
-      ...prev,
-      tahunAjaranAktif: tahunBerikutnya
-    }));
-    await refreshPeriode();
-    refreshAuditLogs();
-    showToast(`Tutup Buku berhasil. Saldo akhir ${formatRupiah(res.saldoAkhir || 0)} menjadi saldo awal ${tahunBerikutnya}. Tidak ada transaksi yang dihapus.`);
-  };
+    await refreshPemasukan();
+    await refreshPengeluaran();
+    await refreshSiswaTagihan();
+    await refreshAuditLogs();
 
-  const handleBukaKembaliBuku = async () => {
-    const closed = [...periodeList].filter(p => p.status === 'DITUTUP').sort((a, b) => (b.closedAt || '').localeCompare(a.closedAt || ''))[0];
-    if (!closed) {
-      showToast('Tidak ada periode yang bisa dibuka kembali.');
-      return;
-    }
-    const res = await bukaKembaliBuku(closed.id);
-    if (!res.success) {
-      showToast(`Gagal membuka kembali buku: ${res.message}`);
-      return;
-    }
-    setKonfigurasi(prev => ({ ...prev, tahunAjaranAktif: closed.tahunAjaran }));
-    await refreshPeriode();
-    showToast(`Periode ${closed.tahunAjaran} dibuka kembali. Data tidak dihapus.`);
-  };
-
-  const handleResetAllData = () => {
-    if (isConnectedToSupabase) {
-      // Poin 21 panduan: mode Produksi TIDAK BOLEH kehilangan data secara
-      // massal lewat satu tombol UI -- hapus data hanya lewat aksi hapus
-      // per-transaksi yang sudah tervalidasi server.
-      showToast('Reset massal dinonaktifkan di mode Produksi. Hapus transaksi satu per satu lewat tombol Hapus pada tiap baris.');
-      return;
-    }
-    if (confirm('[Demo Lokal] Apakah Anda yakin ingin mengosongkan seluruh data transaksi di tampilan ini? (Tidak memengaruhi database produksi mana pun.)')) {
-      setPemasukanList([]);
-      setPengeluaranList([]);
-      setSiswaTagihanList([]);
-      setAuditLogs([]);
-      showToast('[Demo Lokal] Seluruh data tampilan berhasil direset!');
-    }
+    showToast(`Tutup Buku berhasil. Saldo akhir ${formatRupiah(res.data?.saldoAkhir || 0)} menjadi saldo awal ${next?.tahunAjaran || 'periode berikutnya'}.`);
   };
 
   // Sync / Test Supabase on mount
@@ -266,7 +294,7 @@ export default function App() {
         setIsAuthModalOpen(true);
       }
 
-      const [config, kelas, sumber, kategori, inData, outData, stData, logs] = await Promise.all([
+      const [config, kelas, sumber, kategori, inData, outData, stData, logs, periods] = await Promise.all([
         fetchKonfigurasiLembaga(),
         fetchMasterKelas(),
         fetchMasterSumberDana(),
@@ -274,7 +302,8 @@ export default function App() {
         fetchPemasukanFromSupabase(),
         fetchPengeluaranFromSupabase(),
         fetchSiswaTagihan(),
-        fetchAuditLogsFromSupabase()
+        fetchAuditLogsFromSupabase(),
+        fetchPeriodePembukuan()
       ]);
 
       if (config) setKonfigurasi(config);
@@ -285,19 +314,7 @@ export default function App() {
       setPengeluaranList(outData ?? []);
       setSiswaTagihanList(stData ?? []);
       setAuditLogs(logs ?? []);
-
-      const cfg = config || getDefaultConfiguration();
-      let periods = await fetchPeriodePembukuan();
-      if (!periods.length) {
-        const ensured = await ensurePeriodeAktif(cfg.tahunAjaranAktif || '2025/2026', cfg.saldoAwal || 0);
-        if (ensured.success && ensured.data) periods = [ensured.data];
-      }
-      setPeriodeList(periods);
-      const activePeriod = periods.find(p => p.status === 'AKTIF');
-      if (activePeriod) {
-        const calc = await hitungSaldoAkhirPeriode(activePeriod.id);
-        if (calc.success) setSaldoAkhirPeriode(calc.saldoAkhir ?? null);
-      }
+      setPeriodePembukuanList(periods ?? []);
     } else {
       // Mode Demo Lokal: tidak ada Supabase terhubung -> data initial hanya
       // dipakai DI SINI, khusus untuk demo (poin 4 panduan), tidak pernah
@@ -317,12 +334,19 @@ export default function App() {
       setPengeluaranList(INITIAL_PENGELUARAN);
       setSiswaTagihanList(INITIAL_SISWA_TAGIHAN);
       setAuditLogs(INITIAL_AUDIT_LOGS);
-      const localPeriods = await fetchPeriodePembukuan();
-      if (localPeriods.length) setPeriodeList(localPeriods);
-      else {
-        const ensured = await ensurePeriodeAktif('2025/2026', 0);
-        if (ensured.success && ensured.data) setPeriodeList([ensured.data]);
-      }
+      const demoYear = '2025/2026';
+      setKonfigurasi(prev => ({ ...prev, tahunAjaran: demoYear }));
+      setPeriodePembukuanList([{
+        id: 'PER-DEMO',
+        namaPeriode: demoYear,
+        tahunAjaran: demoYear,
+        tanggalMulai: defaultTanggalMulaiTahunAjaran(demoYear),
+        tanggalAkhir: null,
+        saldoAwal: 0,
+        saldoAkhir: null,
+        status: 'AKTIF',
+        createdAt: new Date().toISOString()
+      }]);
     }
     setAuthChecked(true);
   };
@@ -367,13 +391,6 @@ export default function App() {
     return 'Rp ' + Math.round(num).toLocaleString('id-ID');
   };
 
-  const getActivePeriod = () => periodeList.find(p => p.status === 'AKTIF') || null;
-
-  const isTanggalTerkunci = (tanggal: string) => {
-    const active = getActivePeriod();
-    return !!active && tanggal < active.tanggalMulai;
-  };
-
   // Handlers for Save / Delete
   const handleSavePemasukan = async (data: {
     tanggal: string;
@@ -383,10 +400,6 @@ export default function App() {
     nominal: number;
     keterangan: string;
   }) => {
-    if (isTanggalTerkunci(data.tanggal)) {
-      showToast('Transaksi berada pada periode yang sudah ditutup. Buka kembali buku jika perlu koreksi.');
-      return;
-    }
     if (isConnectedToSupabase) {
       // Poin 5 panduan: jangan anggap transaksi berhasil hanya karena
       // setState -- alur yang benar: validasi -> INSERT Supabase -> fetch
@@ -436,9 +449,6 @@ export default function App() {
     keterangan: string;
     buktiFile?: File | null;
   }): Promise<{ success: boolean; message?: string }> => {
-    if (isTanggalTerkunci(data.tanggal)) {
-      return { success: false, message: 'Tanggal transaksi berada pada periode yang sudah ditutup. Buka kembali buku jika perlu koreksi.' };
-    }
     if (isConnectedToSupabase) {
       // Upload nota/kwitansi (jika ada) ke Supabase Storage dulu, baru
       // simpan URL-nya bersamaan dengan transaksi lewat RPC di bawah.
@@ -517,11 +527,6 @@ export default function App() {
   };
 
   const handleDeletePemasukan = async (id: string) => {
-    const tx = pemasukanList.find(x => x.id === id);
-    if (tx && isTanggalTerkunci(tx.tanggal)) {
-      showToast('Transaksi periode yang sudah ditutup terkunci. Tidak dapat dihapus.');
-      return;
-    }
     if (!confirm('Hapus transaksi pemasukan ini?')) return;
 
     if (isConnectedToSupabase) {
@@ -544,11 +549,6 @@ export default function App() {
   };
 
   const handleDeletePengeluaran = async (id: string) => {
-    const tx = pengeluaranList.find(x => x.id === id);
-    if (tx && isTanggalTerkunci(tx.tanggal)) {
-      showToast('Transaksi periode yang sudah ditutup terkunci. Tidak dapat dihapus.');
-      return;
-    }
     if (!confirm('Hapus transaksi pengeluaran ini?')) return;
 
     if (isConnectedToSupabase) {
@@ -600,10 +600,6 @@ export default function App() {
     noBukti: string;
     nominal: number;
   }) => {
-    if (isTanggalTerkunci(data.tanggal)) {
-      showToast('Pembayaran berada pada periode yang sudah ditutup. Buka kembali buku jika perlu koreksi.');
-      return;
-    }
     const siswa = siswaTagihanList.find(s => s.id === data.siswaId);
     if (!siswa) return;
 
@@ -864,7 +860,15 @@ export default function App() {
   const currentLembaga = konfigurasi.namaLembaga || 'Lembaga Belum Diatur';
   const jenisLembaga = konfigurasi.jenisLembaga;
   const logoDataUrl = konfigurasi.logoUrl;
-  const saldoAwal = konfigurasi.saldoAwal;
+  const activePeriode = getActivePeriode(periodePembukuanList);
+  const saldoAwal = activePeriode?.saldoAwal ?? konfigurasi.saldoAwal;
+  const tahunAjaran = activePeriode?.tahunAjaran || konfigurasi.tahunAjaran || '2025/2026';
+  const activePemasukanList = activePeriode
+    ? pemasukanList.filter(x => x.tanggal >= activePeriode.tanggalMulai && (!activePeriode.tanggalAkhir || x.tanggal <= activePeriode.tanggalAkhir))
+    : pemasukanList;
+  const activePengeluaranList = activePeriode
+    ? pengeluaranList.filter(x => x.tanggal >= activePeriode.tanggalMulai && (!activePeriode.tanggalAkhir || x.tanggal <= activePeriode.tanggalAkhir))
+    : pengeluaranList;
 
   return (
     <div className="flex h-screen w-full overflow-hidden relative bg-[#FAFAFC] text-slate-800 antialiased font-sans">
@@ -900,7 +904,7 @@ export default function App() {
         {/* Top Navbar */}
         <Navbar
           currentLembaga={currentLembaga}
-          tahunAjaranAktif={konfigurasi.tahunAjaranAktif || '2025/2026'}
+          tahunAjaran={tahunAjaran}
           onSelectLembaga={(nama, jenis) => {
             handleUpdateLembaga(nama, jenis);
           }}
@@ -924,10 +928,11 @@ export default function App() {
         <main className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar">
           {activeTab === 'dashboard' && (
             <DashboardView
-              pemasukanList={pemasukanList}
-              pengeluaranList={pengeluaranList}
+              pemasukanList={activePemasukanList}
+              pengeluaranList={activePengeluaranList}
               masterSumberDana={masterSumberDana}
               saldoAwal={saldoAwal}
+              tahunAjaran={tahunAjaran}
               formatRupiah={formatRupiah}
               onSwitchTab={setActiveTab}
             />
@@ -1002,10 +1007,10 @@ export default function App() {
               masterKategoriPengeluaran={masterKategoriPengeluaran}
               auditLogs={auditLogs}
               saldoAwal={saldoAwal}
-              tahunAjaranAktif={konfigurasi.tahunAjaranAktif || '2025/2026'}
-              periodeAktif={periodeList.find(p => p.status === 'AKTIF') || null}
-              periodeTerakhirDitutup={[...periodeList].filter(p => p.status === 'DITUTUP').sort((a,b) => (b.closedAt || '').localeCompare(a.closedAt || ''))[0] || null}
-              saldoAkhirPeriode={saldoAkhirPeriode}
+              tahunAjaran={tahunAjaran}
+              periodeAktifNama={activePeriode?.namaPeriode || ''}
+              periodeAktifTanggalMulai={activePeriode?.tanggalMulai || ''}
+              periodeAktifStatus={activePeriode?.status || null}
               onUpdateLembaga={handleUpdateLembaga}
               onLogoUpload={handleLogoUpload}
               onRemoveLogo={() => setKonfigurasi(prev => ({ ...prev, logoUrl: null }))}
@@ -1018,9 +1023,9 @@ export default function App() {
               onRemoveMasterKategori={handleRemoveMasterKategori}
               onRefreshAuditLogs={refreshAuditLogs}
               onUpdateSaldoAwal={handleUpdateSaldoAwal}
-              onSaveTahunAjaran={handleSaveTahunAjaran}
+              onUpdateTahunAjaran={handleUpdateTahunAjaran}
+              onSavePeriodeSettings={handleSavePeriodeSettings}
               onTutupBuku={handleTutupBuku}
-              onBukaKembaliBuku={handleBukaKembaliBuku}
               showToast={showToast}
             />
           )}

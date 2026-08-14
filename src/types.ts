@@ -62,7 +62,7 @@ export interface KonfigurasiLembaga {
   alamat?: string;
   kontak?: string;
   website?: string;
-  tahunAjaranAktif?: string;
+  tahunAjaran?: string;
 }
 
 export interface PeriodePembukuan {

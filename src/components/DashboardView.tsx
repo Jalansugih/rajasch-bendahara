@@ -14,6 +14,7 @@ interface DashboardViewProps {
   pengeluaranList: Pengeluaran[];
   masterSumberDana: MasterSumberDana[];
   saldoAwal: number;
+  tahunAjaran: string;
   formatRupiah: (val: number) => string;
   onSwitchTab: (tab: string) => void;
 }
@@ -25,6 +26,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   pengeluaranList,
   masterSumberDana,
   saldoAwal,
+  tahunAjaran,
   formatRupiah,
   onSwitchTab
 }) => {
@@ -202,7 +204,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <p className="text-xs text-slate-500">Perbandingan pemasukan vs pengeluaran 6 bulan terakhir</p>
             </div>
             <span className="text-xs font-medium bg-slate-100 text-slate-700 px-3 py-1 rounded-lg">
-              T.A 2025/2026
+              T.A {tahunAjaran}
             </span>
           </div>
 

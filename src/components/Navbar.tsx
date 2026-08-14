@@ -7,7 +7,7 @@ import { UserSession } from '../types';
 
 interface NavbarProps {
   currentLembaga: string;
-  tahunAjaranAktif: string;
+  tahunAjaran: string;
   onSelectLembaga: (nama: string, jenis: string) => void;
   onOpenPemasukanModal: () => void;
   onOpenPengeluaranModal: () => void;
@@ -20,7 +20,7 @@ interface NavbarProps {
 
 export const Navbar: React.FC<NavbarProps> = ({
   currentLembaga,
-  tahunAjaranAktif,
+  tahunAjaran,
   onSelectLembaga,
   onOpenPemasukanModal,
   onOpenPengeluaranModal,
@@ -61,7 +61,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         <div className="hidden lg:flex items-center gap-2 text-xs text-slate-500 font-medium">
           <Calendar className="w-3.5 h-3.5 text-slate-400" />
-          <span>Tahun Ajaran: <strong className="text-slate-700">{tahunAjaranAktif}</strong></span>
+          <span>Tahun Ajaran: <strong className="text-slate-700">{tahunAjaran}</strong></span>
         </div>
       </div>
 

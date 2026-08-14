@@ -13,7 +13,7 @@ const DEFAULT_CONFIG: KonfigurasiLembaga = {
   jenisLembaga: 'SD',
   logoUrl: null,
   saldoAwal: 0,
-  tahunAjaranAktif: '2025/2026'
+  tahunAjaran: '2025/2026'
 };
 
 export async function fetchKonfigurasiLembaga(): Promise<KonfigurasiLembaga | null> {
@@ -36,7 +36,7 @@ export async function fetchKonfigurasiLembaga(): Promise<KonfigurasiLembaga | nu
       alamat: data.alamat || '',
       kontak: data.kontak || '',
       website: data.website || '',
-      tahunAjaranAktif: data.tahun_ajaran_aktif || '2025/2026'
+      tahunAjaran: data.tahun_ajaran || '2025/2026'
     };
   } catch {
     return null;
@@ -49,7 +49,7 @@ export function getDefaultConfiguration(): KonfigurasiLembaga {
 }
 
 export async function saveKonfigurasiLembaga(
-  patch: Partial<Pick<KonfigurasiLembaga, 'namaLembaga' | 'jenisLembaga' | 'npsn' | 'alamat' | 'kontak' | 'website' | 'tahunAjaranAktif'>>
+  patch: Partial<Pick<KonfigurasiLembaga, 'namaLembaga' | 'jenisLembaga' | 'npsn' | 'alamat' | 'kontak' | 'website' | 'tahunAjaran'>>
 ): Promise<{ success: boolean; message?: string }> {
   const client = getSupabaseClient();
   if (!client) return { success: false, message: 'Supabase belum terhubung.' };
@@ -61,7 +61,7 @@ export async function saveKonfigurasiLembaga(
   if (patch.alamat !== undefined) payload.alamat = patch.alamat;
   if (patch.kontak !== undefined) payload.kontak = patch.kontak;
   if (patch.website !== undefined) payload.website = patch.website;
-  if (patch.tahunAjaranAktif !== undefined) payload.tahun_ajaran_aktif = patch.tahunAjaranAktif;
+  if (patch.tahunAjaran !== undefined) payload.tahun_ajaran = patch.tahunAjaran;
 
   const { error } = await client.from('konfigurasi_lembaga').upsert(payload, { onConflict: 'id' });
   if (error) return { success: false, message: error.message };
