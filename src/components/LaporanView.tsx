@@ -168,9 +168,12 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      {/* Print CSS stylesheet to ensure ONLY the document paper sheet is printed,
-          and that data yang lebih banyak dari 1 halaman otomatis lanjut ke halaman berikutnya
-          (bukan terpotong), lengkap dengan header tabel yang berulang di tiap halaman baru. */}
+      {/* Print CSS stylesheet: elemen non-laporan (Sidebar, Navbar, toolbar, panel filter, dst.)
+          sudah disembunyikan total lewat class Tailwind `print:hidden` langsung di elemennya
+          (bukan sekadar visibility:hidden) supaya TIDAK menyisakan ruang kosong di kertas cetak.
+          Blok CSS di bawah ini hanya mengatur tampilan & pagination dokumen itu sendiri, supaya
+          data yang lebih panjang dari 1 halaman otomatis lanjut ke halaman berikutnya dengan rapi
+          (header tabel berulang, baris tidak terpotong di tengah). */}
       <style>{`
         @media print {
           @page {
@@ -178,11 +181,9 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
             margin: 12mm;
           }
 
-          body * {
-            visibility: hidden !important;
-          }
-          #printable-report, #printable-report * {
-            visibility: visible !important;
+          html, body {
+            height: auto !important;
+            overflow: visible !important;
           }
 
           /* Bebaskan wrapper preview dari overflow/flex agar tidak memotong konten saat dicetak */
@@ -201,6 +202,7 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
             width: 100% !important;
             min-height: 0 !important;
             height: auto !important;
+            max-height: none !important;
             padding: 0 !important;
             margin: 0 !important;
             box-shadow: none !important;
@@ -238,7 +240,7 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
         }
       `}</style>
 
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="print:hidden flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold text-slate-900 tracking-tight">Laporan Keuangan Otomatis</h1>
           <p className="text-xs text-slate-500">Dibuat instan dari transaksi harian. Siap cetak A4 atau ekspor Excel/CSV untuk Komite & Yayasan.</p>
@@ -262,7 +264,7 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
       </div>
 
       {/* REPORT CONFIGURATION PANEL */}
-      <div className="bg-white p-6 rounded-[14px] border border-slate-200/90 shadow-sm grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="print:hidden bg-white p-6 rounded-[14px] border border-slate-200/90 shadow-sm grid grid-cols-1 md:grid-cols-3 gap-4">
         <div>
           <label className="block text-xs font-semibold text-slate-700 mb-1.5">Jenis Laporan Administrasi</label>
           <select 
