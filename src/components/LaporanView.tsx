@@ -171,6 +171,10 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
       {/* Print CSS stylesheet to ensure ONLY the document paper sheet is printed */}
       <style>{`
         @media print {
+          @page {
+            size: A4;
+            margin: 10mm;
+          }
           body * {
             visibility: hidden !important;
           }
@@ -182,12 +186,43 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
             left: 0 !important;
             top: 0 !important;
             width: 100% !important;
-            min-height: 100% !important;
-            padding: 20px !important;
+            /* Flex/grid containers are "monolithic" in print engines: they refuse to break
+               across pages, which is what caused long reports (banyak data) to get
+               terpotong instead of lanjut ke halaman berikutnya. Force plain block flow
+               so the browser is free to paginate normally. */
+            display: block !important;
+            min-height: 0 !important;
+            height: auto !important;
+            padding: 0 !important;
             margin: 0 !important;
             box-shadow: none !important;
             border: none !important;
             background: white !important;
+          }
+          #printable-report > * {
+            display: block !important;
+          }
+          /* Let the table itself split across pages instead of being clipped */
+          #printable-report table {
+            page-break-inside: auto !important;
+          }
+          /* Repeat the column headings on every new page for readability */
+          #printable-report thead {
+            display: table-header-group !important;
+          }
+          /* Keep the totals row only at the true end of the report, not repeated per page */
+          #printable-report tfoot {
+            display: table-row-group !important;
+          }
+          /* Never slice a single row in half between two pages */
+          #printable-report tr {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+          }
+          /* Keep the signature block together on one page */
+          #printable-report .print-signature-block {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
           }
         }
       `}</style>
@@ -402,7 +437,7 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
           </div>
 
           {/* Formal Signature Block */}
-          <div className="mt-12 pt-6">
+          <div className="print-signature-block mt-12 pt-6">
             <div className="grid grid-cols-2 gap-8 text-center text-xs">
               <div>
                 <p className="text-slate-600">Mengetahui,</p>
