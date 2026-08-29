@@ -232,10 +232,34 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
             break-inside: avoid;
           }
 
-          /* Blok tanda tangan tetap satu kesatuan, boleh lanjut ke halaman baru jika tidak muat */
+          /* Blok tanda tangan tetap satu kesatuan, boleh lanjut ke halaman baru jika tidak muat.
+             PENTING: browser (terutama Chrome) kadang salah menghitung sisa ruang halaman untuk
+             elemen setelah <table> jika elemen tsb berisi CSS Grid/Flexbox di dalamnya -- akibatnya
+             blok tanda tangan bisa "dipaksa" pindah ke halaman baru walau ruang di halaman
+             sebelumnya sebenarnya masih cukup. Untuk menghindari salah hitung itu, tampilan 2 kolom
+             tanda tangan diubah ke table/table-cell KHUSUS saat print (hasil visualnya identik,
+             hanya metode render yang lebih bisa diprediksi oleh mesin pagination cetak).
+          */
           .print-signature-block {
             page-break-inside: avoid;
             break-inside: avoid;
+            break-inside: avoid-page;
+          }
+          .print-signature-grid {
+            display: table !important;
+            width: 100% !important;
+            table-layout: fixed !important;
+          }
+          .print-signature-col {
+            display: table-cell !important;
+            width: 50% !important;
+            vertical-align: top !important;
+          }
+          .print-signature-col:first-child {
+            padding-right: 16px !important;
+          }
+          .print-signature-col:last-child {
+            padding-left: 16px !important;
           }
         }
       `}</style>
@@ -451,14 +475,14 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
 
           {/* Formal Signature Block */}
           <div className="print-signature-block mt-12 pt-6">
-            <div className="grid grid-cols-2 gap-8 text-center text-xs">
-              <div>
+            <div className="print-signature-grid grid grid-cols-2 gap-8 text-center text-xs">
+              <div className="print-signature-col">
                 <p className="text-slate-600">Mengetahui,</p>
                 <p className="font-bold text-slate-900 mb-16">Kepala Sekolah {currentLembaga}</p>
                 <p className="font-bold text-slate-900 underline">H. Fahru Rozi Ramdhan S.S., M.Pd</p>
                 <p className="text-[10px] text-slate-500">NIP. .........................................</p>
               </div>
-              <div>
+              <div className="print-signature-col">
                 <p className="text-slate-600">Cianjur, {printDate}</p>
                 <p className="font-bold text-slate-900 mb-16">Bendahara Sekolah</p>
                 <p className="font-bold text-slate-900 underline">Rizki Mulyana, S.Pd</p>
