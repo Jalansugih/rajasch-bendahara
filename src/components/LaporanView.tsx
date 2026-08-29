@@ -168,29 +168,37 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      {/* Print CSS stylesheet to ensure ONLY the document paper sheet is printed */}
+      {/* Print CSS stylesheet to ensure ONLY the document paper sheet is printed,
+          and that data yang lebih banyak dari 1 halaman otomatis lanjut ke halaman berikutnya
+          (bukan terpotong), lengkap dengan header tabel yang berulang di tiap halaman baru. */}
       <style>{`
         @media print {
           @page {
             size: A4;
-            margin: 10mm;
+            margin: 12mm;
           }
+
           body * {
             visibility: hidden !important;
           }
           #printable-report, #printable-report * {
             visibility: visible !important;
           }
-          #printable-report {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 100% !important;
-            /* Flex/grid containers are "monolithic" in print engines: they refuse to break
-               across pages, which is what caused long reports (banyak data) to get
-               terpotong instead of lanjut ke halaman berikutnya. Force plain block flow
-               so the browser is free to paginate normally. */
+
+          /* Bebaskan wrapper preview dari overflow/flex agar tidak memotong konten saat dicetak */
+          .print-preview-wrapper {
+            position: static !important;
+            overflow: visible !important;
             display: block !important;
+            padding: 0 !important;
+            background: transparent !important;
+            border: none !important;
+          }
+
+          #printable-report {
+            position: static !important;
+            display: block !important;
+            width: 100% !important;
             min-height: 0 !important;
             height: auto !important;
             padding: 0 !important;
@@ -199,30 +207,33 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
             border: none !important;
             background: white !important;
           }
-          #printable-report > * {
-            display: block !important;
+
+          /* Kop surat & judul laporan jangan sampai terbelah di tengah */
+          .print-kop-surat,
+          .print-report-title {
+            page-break-inside: avoid;
+            break-inside: avoid;
           }
-          /* Let the table itself split across pages instead of being clipped */
-          #printable-report table {
-            page-break-inside: auto !important;
+
+          /* Tabel: header ikut tercetak ulang di halaman baru, baris data tidak terpotong di tengah */
+          .print-report-table {
+            page-break-inside: auto;
           }
-          /* Repeat the column headings on every new page for readability */
-          #printable-report thead {
-            display: table-header-group !important;
+          .print-report-table thead {
+            display: table-header-group;
           }
-          /* Keep the totals row only at the true end of the report, not repeated per page */
-          #printable-report tfoot {
-            display: table-row-group !important;
+          .print-report-table tfoot {
+            display: table-footer-group;
           }
-          /* Never slice a single row in half between two pages */
-          #printable-report tr {
-            page-break-inside: avoid !important;
-            break-inside: avoid !important;
+          .print-report-table tr {
+            page-break-inside: avoid;
+            break-inside: avoid;
           }
-          /* Keep the signature block together on one page */
-          #printable-report .print-signature-block {
-            page-break-inside: avoid !important;
-            break-inside: avoid !important;
+
+          /* Blok tanda tangan tetap satu kesatuan, boleh lanjut ke halaman baru jika tidak muat */
+          .print-signature-block {
+            page-break-inside: avoid;
+            break-inside: avoid;
           }
         }
       `}</style>
@@ -315,11 +326,11 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
       </div>
 
       {/* REALTIME A4 PRINT PREVIEW CANVAS */}
-      <div className="bg-slate-300/60 p-6 md:p-10 rounded-[14px] border border-slate-300 overflow-x-auto flex justify-center">
+      <div className="print-preview-wrapper bg-slate-300/60 p-6 md:p-10 rounded-[14px] border border-slate-300 overflow-x-auto flex justify-center">
         <div id="printable-report" className="bg-white w-[210mm] min-h-[297mm] p-12 shadow-2xl text-slate-900 text-xs font-sans relative flex flex-col justify-between">
           <div>
             {/* Official Header Kop Sekolah */}
-            <div className="flex items-center gap-4 pb-4 border-b-2 border-slate-900 mb-6">
+            <div className="print-kop-surat flex items-center gap-4 pb-4 border-b-2 border-slate-900 mb-6">
               <label className="w-16 h-16 shrink-0 bg-slate-100 rounded-lg flex items-center justify-center border border-slate-300 font-bold text-slate-400 text-[10px] overflow-hidden cursor-pointer hover:border-blue-400 transition-all relative group" title="Klik untuk mengganti logo lembaga">
                 {logoDataUrl ? (
                   <img src={logoDataUrl} className="w-full h-full object-contain p-1" alt="Logo" />
@@ -336,7 +347,7 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
             </div>
 
             {/* Report Title */}
-            <div className="text-center mb-6">
+            <div className="print-report-title text-center mb-6">
               <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 underline">
                 LAPORAN {reportType.toUpperCase()}
               </h3>
@@ -348,7 +359,7 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
 
             {isSaldoPosisi ? (
               /* SALDO & POSISI KAS: ringkasan saja, tanpa daftar transaksi per-baris */
-              <table className="w-full text-left border-collapse border border-slate-300 text-[11px] mb-8">
+              <table className="print-report-table w-full text-left border-collapse border border-slate-300 text-[11px] mb-8">
                 <tbody className="divide-y divide-slate-200">
                   <tr>
                     <td className="border border-slate-300 p-3 font-semibold w-2/3">Saldo Awal Periode ({reportMonth})</td>
@@ -370,7 +381,7 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
               </table>
             ) : (
               /* Report Table Body */
-              <table className="w-full text-left border-collapse border border-slate-300 text-[11px] mb-8">
+              <table className="print-report-table w-full text-left border-collapse border border-slate-300 text-[11px] mb-8">
                 <thead>
                   <tr className="bg-slate-100 text-slate-800 font-bold">
                     <th className="border border-slate-300 p-2 text-center w-8">No</th>
