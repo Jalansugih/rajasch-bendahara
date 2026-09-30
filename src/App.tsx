@@ -707,7 +707,7 @@ export default function App() {
     setKonfigurasi(prev => ({ ...prev, namaLembaga: nama, jenisLembaga: jenis }));
     showToast('[Demo Lokal] Profil lembaga diperbarui sementara');
   };
-
+  // Update periode bulan,
   // Master data (poin 8 panduan): setiap tambah/hapus memanggil Supabase,
   // lalu refresh data -- tidak lagi murni memodifikasi array React State.
   const handleAddMasterKelas = async () => {
