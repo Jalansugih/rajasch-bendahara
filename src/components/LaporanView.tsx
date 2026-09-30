@@ -1,6 +1,20 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Printer, RefreshCw, Upload, Download, FileSpreadsheet } from 'lucide-react';
-import { Pemasukan, Pengeluaran, SiswaTagihan } from '../types';
+import { Pemasukan, Pengeluaran, SiswaTagihan, PeriodePembukuan } from '../types';
+
+const NAMA_BULAN = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+const labelBulan = (ym: string) => {
+  const [y, m] = ym.split('-');
+  return `${NAMA_BULAN[parseInt(m, 10) - 1] || ym} ${y}`;
+};
+const nextMonth = (ym: string) => {
+  const [y, m] = ym.split('-').map(Number);
+  return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
+};
+const currentYm = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+};
 
 interface LaporanViewProps {
   pemasukanList: Pemasukan[];
@@ -12,6 +26,7 @@ interface LaporanViewProps {
   onLogoUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   masterKelas: string[];
   siswaTagihanList: SiswaTagihan[];
+  periodeList?: PeriodePembukuan[];
 }
 
 export const LaporanView: React.FC<LaporanViewProps> = ({
@@ -23,11 +38,32 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
   formatRupiah,
   onLogoUpload,
   masterKelas,
-  siswaTagihanList
+  siswaTagihanList,
+  periodeList = []
 }) => {
   const [selectedReportType, setSelectedReportType] = useState('Buku Kas Umum (BKU)');
   const [customReportType, setCustomReportType] = useState('');
-  const [reportMonth, setReportMonth] = useState('Agustus 2026');
+  // Daftar bulan dibuat otomatis: dari transaksi, rentang periode pembukuan, dan bulan berjalan.
+  const monthOptions = useMemo(() => {
+    const set = new Set<string>();
+    const add = (ym: string) => { if (/^\d{4}-\d{2}$/.test(ym)) set.add(ym); };
+    pemasukanList.forEach(x => add((x.tanggal || '').slice(0, 7)));
+    pengeluaranList.forEach(x => add((x.tanggal || '').slice(0, 7)));
+    const nowYm = currentYm();
+    add(nowYm);
+    periodeList.forEach(p => {
+      const start = (p.tanggalMulai || '').slice(0, 7);
+      if (!/^\d{4}-\d{2}$/.test(start) || start < '2000-01') return;
+      const end = (p.tanggalAkhir || '').slice(0, 7) || nowYm;
+      const last = end < nowYm || p.tanggalAkhir ? end : nowYm;
+      for (let ym = start, i = 0; ym <= last && i < 60; ym = nextMonth(ym), i++) add(ym);
+    });
+    return Array.from(set).sort().reverse(); // terbaru di atas
+  }, [pemasukanList, pengeluaranList, periodeList]);
+
+  const [selectedMonth, setSelectedMonth] = useState<string>(currentYm());
+  const periodPrefix = monthOptions.includes(selectedMonth) ? selectedMonth : (monthOptions[0] || currentYm());
+  const reportMonth = labelBulan(periodPrefix);
   const [selectedKelas, setSelectedKelas] = useState('Semua Kelas');
   const printDate = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
 
@@ -35,15 +71,6 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
     ? (customReportType.trim() || 'Laporan Custom') 
     : selectedReportType;
 
-  // Month mapping to prefix YYYY-MM
-  const getMonthPrefix = (label: string) => {
-    if (label.includes('Agustus')) return '2026-08';
-    if (label.includes('Juli')) return '2026-07';
-    if (label.includes('Juni')) return '2026-06';
-    return '2026-08';
-  };
-
-  const periodPrefix = getMonthPrefix(reportMonth);
 
   // Setiap Jenis Laporan Administrasi punya "mode" tampilan & filter data yang berbeda.
   const isBKU = selectedReportType === 'Buku Kas Umum (BKU)';
@@ -67,16 +94,25 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
   const allTxSorted = [
     ...pemasukanList.map(x => ({ ...x, type: 'IN' as const })),
     ...pengeluaranList.map(x => ({ ...x, type: 'OUT' as const }))
-  ].sort((a, b) => new Date(a.tanggal).getTime() - new Date(b.tanggal).getTime());
+  ].sort((a, b) => (a.tanggal || '').localeCompare(b.tanggal || ''));
 
-  let saldoAwalPeriode = saldoAwal;
+  // Cari periode pembukuan yang memuat bulan ini, agar saldo awal bulan dihitung dari
+  // saldo awal periode tsb + transaksi sejak awal periode sampai sebelum bulan ini.
+  const monthStart = `${periodPrefix}-01`;
+  const monthEnd = `${periodPrefix}-31`;
+  const periodeUntukBulan =
+    periodeList.find(p => p.tanggalMulai <= monthStart && (!p.tanggalAkhir || p.tanggalAkhir >= monthStart)) ||
+    [...periodeList].filter(p => p.tanggalMulai <= monthEnd).sort((a, b) => b.tanggalMulai.localeCompare(a.tanggalMulai))[0];
+
+  let saldoAwalPeriode = periodeUntukBulan ? periodeUntukBulan.saldoAwal : saldoAwal;
+  const batasAwal = periodeUntukBulan ? periodeUntukBulan.tanggalMulai : '';
   const txDalamPeriode: typeof allTxSorted = [];
 
   allTxSorted.forEach(tx => {
     const txPrefix = (tx.tanggal || '').slice(0, 7);
     if (txPrefix === periodPrefix) {
       txDalamPeriode.push(tx);
-    } else if (txPrefix < periodPrefix) {
+    } else if (txPrefix < periodPrefix && (tx.tanggal || '') >= batasAwal) {
       saldoAwalPeriode += (tx.type === 'IN' ? tx.nominal : -tx.nominal);
     }
   });
@@ -232,34 +268,10 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
             break-inside: avoid;
           }
 
-          /* Blok tanda tangan tetap satu kesatuan, boleh lanjut ke halaman baru jika tidak muat.
-             PENTING: browser (terutama Chrome) kadang salah menghitung sisa ruang halaman untuk
-             elemen setelah <table> jika elemen tsb berisi CSS Grid/Flexbox di dalamnya -- akibatnya
-             blok tanda tangan bisa "dipaksa" pindah ke halaman baru walau ruang di halaman
-             sebelumnya sebenarnya masih cukup. Untuk menghindari salah hitung itu, tampilan 2 kolom
-             tanda tangan diubah ke table/table-cell KHUSUS saat print (hasil visualnya identik,
-             hanya metode render yang lebih bisa diprediksi oleh mesin pagination cetak).
-          */
+          /* Blok tanda tangan tetap satu kesatuan, boleh lanjut ke halaman baru jika tidak muat */
           .print-signature-block {
             page-break-inside: avoid;
             break-inside: avoid;
-            break-inside: avoid-page;
-          }
-          .print-signature-grid {
-            display: table !important;
-            width: 100% !important;
-            table-layout: fixed !important;
-          }
-          .print-signature-col {
-            display: table-cell !important;
-            width: 50% !important;
-            vertical-align: top !important;
-          }
-          .print-signature-col:first-child {
-            padding-right: 16px !important;
-          }
-          .print-signature-col:last-child {
-            padding-left: 16px !important;
           }
         }
       `}</style>
@@ -330,13 +342,11 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
         <div>
           <label className="block text-xs font-semibold text-slate-700 mb-1.5">Periode Bulan</label>
           <select 
-            value={reportMonth}
-            onChange={(e) => setReportMonth(e.target.value)}
+            value={periodPrefix}
+            onChange={(e) => setSelectedMonth(e.target.value)}
             className="w-full bg-slate-50 border border-slate-200 rounded-[14px] px-3 py-2 text-xs font-medium text-slate-800 outline-none focus:border-blue-500"
           >
-            <option value="Agustus 2026">Agustus 2026</option>
-            <option value="Juli 2026">Juli 2026</option>
-            <option value="Juni 2026">Juni 2026</option>
+            {monthOptions.map(ym => <option key={ym} value={ym}>{labelBulan(ym)}</option>)}
           </select>
         </div>
 
@@ -475,14 +485,14 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
 
           {/* Formal Signature Block */}
           <div className="print-signature-block mt-12 pt-6">
-            <div className="print-signature-grid grid grid-cols-2 gap-8 text-center text-xs">
-              <div className="print-signature-col">
+            <div className="grid grid-cols-2 gap-8 text-center text-xs">
+              <div>
                 <p className="text-slate-600">Mengetahui,</p>
                 <p className="font-bold text-slate-900 mb-16">Kepala Sekolah {currentLembaga}</p>
                 <p className="font-bold text-slate-900 underline">H. Fahru Rozi Ramdhan S.S., M.Pd</p>
                 <p className="text-[10px] text-slate-500">NIP. .........................................</p>
               </div>
-              <div className="print-signature-col">
+              <div>
                 <p className="text-slate-600">Cianjur, {printDate}</p>
                 <p className="font-bold text-slate-900 mb-16">Bendahara Sekolah</p>
                 <p className="font-bold text-slate-900 underline">Rizki Mulyana, S.Pd</p>

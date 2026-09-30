@@ -998,6 +998,7 @@ export default function App() {
               onLogoUpload={handleLogoUpload}
               masterKelas={masterKelas}
               siswaTagihanList={siswaTagihanList}
+              periodeList={periodePembukuanList}
             />
           )}
 
